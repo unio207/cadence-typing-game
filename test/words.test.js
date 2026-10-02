@@ -20,7 +20,7 @@ test('TOP200 is a subset of the pool', () => {
   assert.deepEqual(missing, [], 'TOP200 words not in pool: ' + missing.join(', '));
 });
 
-test('every chapter filter has at least 40 eligible words', () => {
+test('every chapter filter has a workable number of eligible words', () => {
   const tags = WORDS.map(tagWord);
   const counts = {
     'open field': tags.filter(t => t.altFrac >= 0.6).length,
@@ -31,7 +31,27 @@ test('every chapter filter has at least 40 eligible words', () => {
     'one hand': tags.filter(t => t.maxSameHandRun >= 3).length,
     'thin air': tags.filter(t => t.topFrac >= 0.7).length
   };
+  // 100, not 40. 'home ground' once had 52 eligible words, which with a 12-word
+  // no-repeat window meant the chapter audibly repeated itself. If this fails the
+  // fix is to add words to src/words.js, never to loosen a chapter filter.
   for (const [chapter, n] of Object.entries(counts)) {
-    assert.ok(n >= 40, chapter + ' has only ' + n + ' eligible words — add words to src/words.js');
+    assert.ok(n >= 100, chapter + ' has only ' + n + ' eligible words — add words to src/words.js');
+  }
+});
+
+test('generated text does not visibly repeat itself', () => {
+  // The 12-word rejection window stops adjacent repeats but says nothing about
+  // how often a word comes back over a whole run, which is what a player notices.
+  const { CHAPTERS, createGenerator } = require('../src/generator.js');
+  for (let ci = 0; ci < CHAPTERS.length; ci++) {
+    const words = createGenerator(5).words(ci, 300);
+    const freq = {};
+    for (const w of words) freq[w] = (freq[w] || 0) + 1;
+    const worst = Math.max(...Object.values(freq));
+    const distinct = new Set(words).size;
+    assert.ok(worst <= 14,
+      CHAPTERS[ci].name + ' repeats a word ' + worst + ' times in 300');
+    assert.ok(distinct >= 90,
+      CHAPTERS[ci].name + ' used only ' + distinct + ' distinct words in 300');
   }
 });
