@@ -1,3 +1,23 @@
+# os
 .DS_Store
+Thumbs.db
+
+# local tooling / scratch
 .superpowers/
 dist/
+*.log
+
+# secrets - never commit any of these
+.env
+.env.*
+*.pem
+*.pfx
+*.p12
+*.key
+id_rsa
+id_ed25519
+credentials.json
+.netrc
+
+# deps / build artifacts (none today; here so they can never sneak in)
+node_modules/
