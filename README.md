@@ -64,50 +64,55 @@ Produced by `node tools/balance.js`, which plays each draft with a synthetic
 typist whose keystroke intervals depend on hand and finger transitions and whose
 error rate depends on how legible the character is. Averages over five seeds.
 
+One number worth knowing before you set a goal: **chapter texture swings real
+throughput by about 7%** — a nominal 120 wpm typist gets 123 on `open field` but
+114 on `long form` and `one hand` — while the survivable band is 6%. Set your goal
+to what you can hold on the *hardest* chapter, not your best one.
+
 ```
 A - drying ink   (pressure: legibility, paced by a goal wpm)
 ------------------------------------------------------------
   typist                     goal    wpm   fade    hole    strike  reached   ends       ending
-  metronome 200 on goal        196    185  8s    18s     18s     0.0         27s   strikes      16,628
-  metronome 200 10% under      216    187  7s    9s      10s     0.0         10s   strikes       6,649
-  metronome 200 10% over       171    179  10s   24s     24s     1.0 @11s    25s   strikes      15,896
-  tight 150 on goal            142    137  9s    26s     78s     0.0        121s   strikes      40,353
-  tight 150 10% under          156    138  7s    10s     11s     0.0         13s   strikes       4,345
-  tight 150 10% over           127    137  10s   34s     35s     2.0 @11s    37s   strikes      13,501
-  normal 110 on goal           108    107  9s    68s     85s     0.6 @56s    97s   strikes      19,092
-  normal 110 10% under         119    106  7s    12s     14s     0.0         17s   strikes       3,262
-  normal 110 10% over           97    107  13s   40s     44s     2.0 @11s    49s   strikes      10,200
-  ragged 110 on goal           108    106  9s    32s     34s     0.2 @58s    65s   strikes       9,231
-  ragged 110 10% under         119    106  7s    12s     12s     0.0         16s   strikes       2,239
-  ragged 110 10% over           97    107  14s   67s     68s     2.0 @16s    69s   strikes       9,773
-  slow 70 on goal               71     71  9s    33s     33s     0.2 @229s  106s   strikes       9,405
-  slow 70 10% under             78     71  7s    11s     14s     0.0         20s   strikes       1,600
-  slow 70 10% over              64     72  13s   36s     38s     2.0 @17s    49s   strikes       4,407
+  metronome 200 on goal        206    192  8s    13s     15s     0.0         16s   strikes      11,271
+  metronome 200 10% under      226    193  7s    9s      10s     0.0         11s   strikes       7,560
+  metronome 200 10% over       185    191  10s   56s     56s     2.0 @11s    57s   strikes      42,848
+  tight 150 on goal            145    139  8s    24s     35s     0.0         72s   strikes      24,277
+  tight 150 10% under          159    139  7s    10s     11s     0.0         12s   strikes       4,171
+  tight 150 10% over           130    140  11s   23s     23s     1.0 @11s    30s   strikes      10,797
+  normal 110 on goal           111    110  9s    46s     109s    0.2 @14s   182s   strikes      38,314
+  normal 110 10% under         117    110  8s    15s     21s     0.0         28s   strikes       5,835
+  normal 110 10% over          101    110  12s   29s     39s     1.0 @11s    80s   strikes      16,422
+  ragged 110 on goal           111    109  9s    24s     52s     0.2 @13s    74s   strikes      11,215
+  ragged 110 10% under         117    107  8s    14s     17s     0.0         20s   strikes       2,825
+  ragged 110 10% over          101    110  12s   31s     33s     1.0 @16s    52s   strikes       8,041
+  slow 70 on goal               71     72  9s    45s     55s     0.6 @120s  132s   strikes      12,119
+  slow 70 10% under             79     71  8s    12s     14s     0.0         21s   strikes       1,736
+  slow 70 10% over              64     72  15s   64s     65s     2.0 @15s    74s   strikes       6,884
   (ends at 240s = survived; `reached` is levels cleared in a run)
 
 C - branches [safe]   (pressure: a chaser)
 ------------------------------------------
-  metronome 200   172s     131,060   caught      safe 122 greedy 0 touches 3
-  tight 150       134s      56,363   caught      safe 74 greedy 0 touches 3
-  normal 110      124s      26,947   caught      safe 52 greedy 0 touches 3
-  ragged 110      123s      18,028   caught      safe 52 greedy 0 touches 3
-  slow 70         105s       9,667   caught      safe 28 greedy 0 touches 3
+  metronome 200   173s     137,417   caught      safe 129 greedy 0 touches 3
+  tight 150       129s      55,551   caught      safe 73 greedy 0 touches 3
+  normal 110      123s      28,305   caught      safe 55 greedy 0 touches 3
+  ragged 110      120s      18,516   caught      safe 53 greedy 0 touches 3
+  slow 70         104s      10,216   caught      safe 29 greedy 0 touches 3
 
 C - branches [greedy]   (pressure: a chaser)
 --------------------------------------------
-  metronome 200    82s     116,944   caught      safe 2 greedy 52 touches 3
-  tight 150        81s      62,675   caught      safe 0 greedy 44 touches 3
-  normal 110       77s      29,699   caught      safe 1 greedy 28 touches 3
-  ragged 110       77s      20,270   caught      safe 1 greedy 25 touches 3
-  slow 70          68s      11,066   caught      safe 1 greedy 17 touches 3
+  metronome 200    81s     117,610   caught      safe 1 greedy 57 touches 3
+  tight 150        82s      64,026   caught      safe 0 greedy 46 touches 3
+  normal 110       80s      31,201   caught      safe 0 greedy 33 touches 3
+  ragged 110       80s      21,256   caught      safe 1 greedy 29 touches 3
+  slow 70          68s      11,191   caught      safe 0 greedy 18 touches 3
 
 C - branches [adaptive]   (pressure: a chaser)
 ----------------------------------------------
-  metronome 200   165s     171,546   caught      safe 71 greedy 45 touches 3
-  tight 150       135s      78,855   caught      safe 36 greedy 35 touches 3
-  normal 110      121s      35,837   caught      safe 29 greedy 20 touches 3
-  ragged 110      118s      24,300   caught      safe 28 greedy 17 touches 3
-  slow 70          97s      12,275   caught      safe 14 greedy 11 touches 3
+  metronome 200   173s     183,523   caught      safe 80 greedy 50 touches 3
+  tight 150       135s      79,518   caught      safe 38 greedy 37 touches 3
+  normal 110      123s      37,793   caught      safe 28 greedy 25 touches 3
+  ragged 110      124s      25,707   caught      safe 32 greedy 23 touches 3
+  slow 70          97s      12,787   caught      safe 14 greedy 12 touches 3
 ```
 
 Draft C is shown under three strategies. That an **adaptive** player — one who takes
@@ -119,6 +124,28 @@ seconds at every speed and every goal**, because that is a property of the ramp
 rather than of the player — it cannot drift with skill. And the survivable band is
 narrow: 10% under your goal puts a hole in the page at about ten seconds and ends
 the run inside twenty, so the rung you pick is the whole game.
+
+## The words
+
+Everyday English, about 960 words, held in rough frequency order — a word's
+position in `src/words.js` is how often it turns up, because the generator samples
+the front of the list more than the back. The bar is *a fast typist never has to
+think about it*: you cannot hold a rhythm through a word you are still reading.
+
+An earlier pool was grown to 3142 words for variety and started serving up
+`wield`, `keel`, `phantom`, `torment` and `situate`. That was a vocabulary test,
+not a typing game, and the fix was to shrink the pool rather than to filter it.
+Variety now comes from the sampler and the chapter filters.
+
+Within that, easily typed words are favoured explicitly: `easeOf()` prices a word
+from the same hand-and-finger facts the typist model uses — a same finger moving
+to a new key is expensive, a hand-off is cheap, long words cost rhythm to hold —
+and candidates are scored on it. There is a test asserting generated text is
+measurably easier than drawing from the same pool uniformly would be, so the
+weighting cannot quietly stop working.
+
+Excluded on purpose: anything with a UK/US spelling split, anything capitalised in
+real use, anything outside 2–9 letters.
 
 ## Development
 

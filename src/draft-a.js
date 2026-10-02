@@ -65,6 +65,11 @@
   // ladder, which is also what every caller that does not care about the goal gets.
   function createRun(seed, opts) {
     const goal = (opts && opts.goal) || s.LEVELS[0];
+    // opts.stepUp: false pins the ladder. Reaching the goal normally promotes you
+    // to the next rung, which means "is this goal a line you can sit on?" is not
+    // otherwise answerable - a player who holds their goal is always killed by the
+    // NEXT one, so the two questions have to be separable to be measured.
+    const stepUp = !opts || opts.stepUp !== false;
     const run = {
       draft: 'a', seed: seed, gen: g.createGenerator(seed),
       text: '', cursor: 0, marks: [], rhythmAt: [],
@@ -72,7 +77,7 @@
       v: 0, peakV: 0, ratio: 1, rhythm: 50, chapterIndex: 0,
       startedAt: null, lastKeyAt: null, nowMs: 0, intervals: [], blindSince: null,
       ended: false, endReason: null,
-      demand: s.createPacer(goal), speed: m.createSpeed()
+      demand: s.createPacer(goal), speed: m.createSpeed(), stepUp: stepUp
     };
     run.chapterIndex = g.chapterAt(run.demand.goal);
     topUp(run);
@@ -145,7 +150,7 @@
         : run.ratio + (target - run.ratio) * (1 - Math.exp(-dtSeconds / DRY_TAU));
       if (s.holdAtGoal(run.demand, run.v, dtSeconds)) {
         run.demand.reached.push({ goal: run.demand.goal, ms: nowMs - run.startedAt });
-        s.stepUp(run.demand);
+        if (run.stepUp) s.stepUp(run.demand);
       }
     }
 

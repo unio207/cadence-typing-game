@@ -67,7 +67,7 @@ test('generated text matches the chapter texture', () => {
   assert.ok(sampleOf('short-work').every(t => t.len <= 4));
   assert.ok(sampleOf('long-form').every(t => t.len >= 6));
   assert.ok(sampleOf('thin-air').every(t => t.topFrac >= 0.7));
-  assert.ok(sampleOf('home-ground').every(t => t.homeFrac >= 0.7));
+  assert.ok(sampleOf('home-ground').every(t => t.homeFrac >= 0.6));
   assert.ok(sampleOf('one-hand').every(t => t.maxSameHandRun >= 3));
 });
 

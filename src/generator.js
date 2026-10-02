@@ -8,6 +8,11 @@
   const WORDS = wd.WORDS;
   const TOP200 = wd.TOP200;
 
+  // How many words back a repeat is forbidden. Adjacent repetition is far more
+  // noticeable than overall frequency, so this is the lever that matters once the
+  // pool is deliberately small and common.
+  const NO_REPEAT_WINDOW = 16;
+
   const ROLL_BIGRAMS = [
     'oi','io','er','re','we','ew','po','op','lk','kl','ui','iu',
     'ol','lo','ki','ik','sd','ds','df','fd','as','sa','ty','rt'
@@ -22,7 +27,7 @@
 
   const CHAPTERS = [
     { key: 'open-field',    name: 'open field',    from: 40,  filter: t => t.altFrac >= 0.6 },
-    { key: 'home-ground',   name: 'home ground',   from: 60,  filter: t => t.homeFrac >= 0.7 },
+    { key: 'home-ground',   name: 'home ground',   from: 60,  filter: t => t.homeFrac >= 0.6 },
     { key: 'common-tongue', name: 'common tongue', from: 80,  filter: t => TOP200.has(t.word) },
     { key: 'short-work',    name: 'short work',    from: 100, filter: t => t.len <= 4 },
     { key: 'inward-roll',   name: 'inward roll',   from: 120, filter: t => hasRoll(t.word) },
@@ -48,7 +53,7 @@
   }
 
   function rejects(cand, recentTags, chapterIndex) {
-    const recent = recentTags.slice(-12);
+    const recent = recentTags.slice(-NO_REPEAT_WINDOW);
     for (const r of recent) if (r.word === cand.word) return 'repeat';
 
     const prev = recent[recent.length - 1];
@@ -73,7 +78,21 @@
     return null;
   }
 
-  function scoreCandidate(cand, prev, chapterIndex) {
+  // How effortless a word is to type, from the same hand and finger facts the
+  // typist model in tools/typist.js prices transitions with: a same finger moving
+  // to a different key is the expensive thing, a hand-off is the cheap one. 1 is
+  // effortless. This is a PREFERENCE, not a filter - every word in the pool is
+  // common enough to be fair game, ease only decides which of several candidates
+  // wins.
+  function easeOf(t) {
+    let e = 1;
+    e -= 0.30 * t.sameFingerPairs;        // 'my', 'gym': no travel, pure stutter
+    e -= 0.20 * (1 - t.altFrac);          // alternating hands plays itself
+    e -= 0.05 * Math.max(0, t.len - 6);   // long words cost rhythm to hold
+    return e;
+  }
+
+  function scoreCandidate(cand, prev, chapterIndex, rank, poolSize) {
     let s = 0;
     if (prev) {
       const last = km.keyInfo(prev.word[prev.word.length - 1]);
@@ -81,16 +100,32 @@
       if (last && first && last.hand !== first.hand) s += 2;
     }
     if (CHAPTERS[chapterIndex].key === 'inward-roll' && hasRoll(cand.word)) s += 2;
-    s -= cand.sameFingerPairs;
+
+    s += 3.0 * easeOf(cand);                        // heavily favour easy words
+    s += 1.2 * (1 - rank / Math.max(1, poolSize));  // and common ones
     return s;
   }
 
+  // Pools keep WORDS' frequency order, so a word's index IS its rank.
   const POOL_CACHE = {};
   function poolFor(chapterIndex) {
     if (!POOL_CACHE[chapterIndex]) {
       POOL_CACHE[chapterIndex] = WORDS.map(tagWord).filter(CHAPTERS[chapterIndex].filter);
     }
     return POOL_CACHE[chapterIndex];
+  }
+
+  // Sampling leans towards the front of the pool rather than being uniform.
+  //
+  // Only mildly, though, and the measurement is why. Once the pool itself is all
+  // common words a heavy lean stops buying commonness and only buys repetition:
+  // measured over 300 generated words, an exponent of 1.9 dropped distinct words
+  // to 72-137 and let one word recur up to 21 times, against 89-176 and 5-11 at
+  // uniform. 1.25 keeps the very common head slightly ahead without that cost.
+  // Typability is handled by easeOf, not by this.
+  const RANK_EXP = 1.25;
+  function sampleIndex(rng, size) {
+    return Math.min(size - 1, Math.floor(size * Math.pow(rng(), RANK_EXP)));
   }
 
   // the greedy branch in draft C: denser, longer, worse transitions
@@ -109,11 +144,12 @@
 
     function pick(pool, chapterIndex) {
       let best = null, bestScore = -Infinity;
-      for (let attempt = 0; attempt < 64 && (best === null || attempt < 8); attempt++) {
-        const cand = pool[Math.floor(rng() * pool.length)];
+      for (let attempt = 0; attempt < 64 && (best === null || attempt < 10); attempt++) {
+        const at = sampleIndex(rng, pool.length);
+        const cand = pool[at];
         if (!cand) continue;
         if (rejects(cand, recent, chapterIndex) !== null) continue;
-        const s = scoreCandidate(cand, recent[recent.length - 1], chapterIndex);
+        const s = scoreCandidate(cand, recent[recent.length - 1], chapterIndex, at, pool.length);
         if (s > bestScore) { bestScore = s; best = cand; }
       }
       if (best === null) {
@@ -123,7 +159,7 @@
       }
       if (best === null) throw new Error('no legal word for chapter ' + chapterIndex);
       recent.push(best);
-      if (recent.length > 12) recent.shift();
+      if (recent.length > NO_REPEAT_WINDOW) recent.shift();
       return best.word;
     }
 
@@ -178,7 +214,8 @@
   }
 
   const api = {
-    CHAPTERS, chapterAt, makeRng, createGenerator, rejects, hasRoll, poolFor, greedyPool
+    CHAPTERS, chapterAt, makeRng, createGenerator, rejects, hasRoll, poolFor, greedyPool,
+    easeOf, sampleIndex, RANK_EXP, NO_REPEAT_WINDOW
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.cadence = Object.assign(root.cadence || {}, api);

@@ -12,10 +12,10 @@ const IDS = ['a', 'c'];
 // Play a draft with a difficulty-aware typist that errs more when it cannot read.
 function play(id, opts) {
   const D = DRAFTS[id];
-  const o = Object.assign({ wpm: 120, jitter: 0.15, seed: 4242, maxSecs: 400, stopAfter: null, goal: null }, opts);
+  const o = Object.assign({ wpm: 120, jitter: 0.15, seed: 4242, maxSecs: 400, stopAfter: null, goal: null, stepUp: true }, opts);
   const rng = makeRng(o.seed);
   const typist = createTypist(o.wpm, o.jitter, rng);
-  const run = D.createRun(o.seed, o.goal ? { goal: o.goal } : undefined);
+  const run = D.createRun(o.seed, (o.goal || o.stepUp === false) ? { goal: o.goal || undefined, stepUp: o.stepUp } : undefined);
   let now = 1000, next = now;
   const dt = 1 / 120;
   const marks = [];
@@ -148,12 +148,19 @@ test('draft A: the ink is drying inside ten seconds, at every speed', () => {
   }
 });
 
-test('draft A: typing at your goal is survivable, ten per cent under it is not', () => {
-  // The pacer only works if the goal is a line you can sit on. Measured: a steady
-  // player on their goal lasts minutes, while the same player under a goal 10%
-  // above them is reading from memory within seconds and gone inside 25.
-  const onGoal = play('a', { wpm: 120, jitter: 0.10, goal: 118, maxSecs: 120 });
-  const under = play('a', { wpm: 120, jitter: 0.10, goal: 132, maxSecs: 120 });
+test('draft A: your goal is a line you can sit on, ten per cent under it is not', () => {
+  // The ladder is pinned here. With it live, holding your goal PROMOTES you to the
+  // next rung and that rung is what kills you - so a run that ends quickly proves
+  // nothing about whether the goal itself was sittable. Those are two different
+  // questions and they have to be measured apart.
+  //
+  // The goal is 112 for a nominal 120 wpm typist, and the gap is the point:
+  // chapter texture swings real throughput by about 7% (123 wpm on 'open field',
+  // 114 on 'long form' and 'one hand') while the survivable band is 6%. A goal set
+  // to a typist's best chapter is unsurvivable by the time the run reaches its
+  // worst one.
+  const onGoal = play('a', { wpm: 120, jitter: 0.10, goal: 112, stepUp: false, maxSecs: 120 });
+  const under = play('a', { wpm: 120, jitter: 0.10, goal: 126, stepUp: false, maxSecs: 120 });
   assert.ok(onGoal.secs > 60,
     'a player on their goal lasted only ' + onGoal.secs.toFixed(0) + 's');
   assert.ok(under.secs < 30,
