@@ -1,0 +1,1913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cadence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper:    #f7f4ec;
+    --ink:      #17171a;
+    --ink-done: #c2bdb0;
+    --mute:     #a3a098;
+    --rule:     #e6e2d7;
+    --red:      #b4412f;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --ease: cubic-bezier(.33, 1, .68, 1);
+    --size: 30px;
+    /* where the caret sits across the stage. draft C moves it right: its threat
+       comes from behind, so it needs room to show the edge. */
+    --caret-x: 34%;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--paper); color: var(--ink);
+    font-family: var(--mono); font-weight: 400;
+    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .screen { display: none; height: 100%; }
+  .screen.is-active { display: block; }
+
+  .label { display: block; font-size: 9px; letter-spacing: .22em; text-transform: uppercase; color: var(--mute); margin-bottom: 4px; }
+
+  /* ================= run ================= */
+
+  #screen-run { position: relative; height: 100%; }
+
+  .hud { position: absolute; top: 34px; left: 50%; transform: translateX(-50%);
+    width: 100%; max-width: 1180px; display: flex; align-items: baseline; gap: 40px;
+    padding: 0 clamp(20px, 4vw, 48px); }
+  .hud .value { display: block; font-size: 27px; letter-spacing: -.02em; line-height: 1; }
+  .hud .value .of { color: var(--ink-done); font-size: 17px; }
+  .hud .spacer { margin-left: auto; }
+  .hud .chapter { text-align: right; }
+  .hud .chapter .name { display: block; font-size: 12.5px; font-weight: 500; line-height: 1; }
+
+  #strikes { display: flex; gap: 7px; justify-content: flex-end; height: 11px; align-items: center; }
+  #strikes i { width: 11px; height: 11px; border-radius: 50% 40% 55% 45%; box-shadow: inset 0 0 0 1px var(--rule); }
+  #strikes i.spent { background: var(--red); box-shadow: none; }
+
+  /* text */
+  #stage { position: absolute; top: 50%; left: 50%; width: 100%; max-width: 1180px;
+    height: 190px; transform: translate(-50%, -50%); }
+  #track { position: absolute; top: 46px; left: 0; right: 0; height: 58px; overflow: hidden; }
+  #line, #caret-line {
+    position: absolute; top: 50%; white-space: pre;
+    font-size: var(--size); line-height: 1; letter-spacing: -.01em;
+    will-change: transform;
+  }
+  #line { left: var(--caret-x); transform: translateY(-50%); }
+  #line span { transition: none; }
+  #line .done { color: var(--ink-done); }
+  #line .err  { color: var(--red); opacity: .55 !important; }
+  #line .miss { color: var(--red); opacity: .16 !important; }
+
+  /* bar underlines - draft B. upcoming bars are shown too: the structure you are
+     about to type is the thing you are playing against, so it has to be visible. */
+  #line .bar-ahead  { box-shadow: inset 0 -1px 0 #e2ded1; }
+  #line .bar-active { box-shadow: inset 0 -1px 0 #cfc9ba; }
+  #line .bar-locked { box-shadow: inset 0 -2px 0 var(--ink); }
+  #line .bar-loose  { box-shadow: inset 0 -1px 0 #d8d3c4; }
+  #line .bar-missed { box-shadow: inset 0 -1px 0 var(--red); }
+
+  #caret {
+    position: absolute; top: 46px; left: var(--caret-x);
+    height: 58px; width: 1ch; overflow: hidden;
+    border-radius: 2px; background: var(--ink);
+    font-size: var(--size);
+    will-change: transform;
+  }
+  #caret-line { left: 0; color: var(--paper); transform: translateY(-50%); }
+
+  /* deadline rule - draft B */
+  #deadline { position: absolute; top: 110px; height: 2px; background: var(--rule); display: none; }
+  #deadline i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--ink); }
+
+  /* the edge - draft C */
+  #edge { position: absolute; top: 38px; width: 1px; height: 74px; background: var(--red); display: none; }
+  #edge::after { content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 64px;
+    background: linear-gradient(90deg, var(--paper), transparent); }
+
+  /* branch lines - draft C */
+  .branch { position: absolute; white-space: pre; font-size: 23px; line-height: 1;
+    letter-spacing: -.01em; color: var(--ink); display: none; }
+  #branch-safe   { top: 0; }
+  #branch-greedy { top: 152px; }
+  .branch .tag { font-size: 9px; letter-spacing: .2em; text-transform: uppercase; color: var(--mute); }
+  #branch-greedy .tag { color: var(--red); }
+
+  #rail { position: absolute; left: 0; top: 120px; width: 100%; height: 22px; display: block; }
+
+  .bar { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 100%; max-width: 1180px; height: 3px; background: var(--rule); }
+  #bar-fill  { position: absolute; bottom: 0; left: 0; height: 3px; background: var(--ink); }
+  #bar-notch { position: absolute; bottom: -5px; width: 1px; height: 13px; background: var(--red); }
+  #bar-notch::after { content: 'demand'; position: absolute; top: 15px; left: -19px;
+    font-size: 7.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--red); }
+
+  /* ================= sheets ================= */
+
+  .sheet { height: 100%; display: flex; flex-direction: column; justify-content: center;
+    padding: 0 clamp(20px, 5vw, 64px); max-width: 900px; margin: 0 auto; }
+  .wordmark { font-size: 13px; letter-spacing: .34em; text-transform: uppercase; font-weight: 500; }
+  .wordmark s { text-decoration: none; color: #cfc9ba; }
+
+  .drafts { margin-top: 38px; }
+  .draft-row { display: flex; align-items: baseline; gap: 18px; padding: 16px 0;
+    border-top: 1px solid var(--rule); cursor: pointer; }
+  .draft-row:last-child { border-bottom: 1px solid var(--rule); }
+  .draft-row .k { font-size: 10px; letter-spacing: .2em; color: var(--mute); width: 14px; }
+  .draft-row .n { font-size: 25px; letter-spacing: -.02em; width: 190px; font-weight: 500; }
+  .draft-row .d { font-size: 12.5px; color: #7d7a72; flex: 1; }
+  .draft-row .b { font-size: 12.5px; color: var(--ink); text-align: right; white-space: nowrap; }
+  .draft-row .b em { font-style: normal; color: var(--mute); }
+  .draft-row:hover .n, .draft-row.sel .n { color: var(--red); }
+
+  .hint { margin-top: 40px; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--mute); }
+  .hint b { color: var(--ink); font-weight: 500; }
+  .hint span { margin-right: 26px; }
+
+  .big { font-size: clamp(54px, 9vw, 92px); letter-spacing: -.045em; line-height: 1; margin: 16px 0 2px; }
+  .sub { font-size: 30px; letter-spacing: -.03em; }
+  .flag { color: var(--red); font-size: 11px; letter-spacing: .2em; text-transform: uppercase; margin-top: 10px; }
+  .stats { display: flex; gap: clamp(22px, 5vw, 54px); margin-top: 30px; padding-top: 22px; border-top: 1px solid var(--rule); }
+  .stats .v { font-size: 27px; letter-spacing: -.02em; }
+  .stats .v s { text-decoration: none; font-size: 14px; color: var(--mute); margin-left: 2px; }
+  #page-print { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--rule);
+    font-size: 16px; line-height: 2.0; max-height: 170px; overflow: hidden; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<section id="screen-title" class="screen is-active">
+  <div class="sheet">
+    <div class="wordmark">cadence<s> &middot; three drafts</s></div>
+    <div class="drafts" id="draft-list"></div>
+    <div class="hint"><span><b>1 2 3</b> choose</span><span><b>any letter</b> begin</span></div>
+  </div>
+</section>
+
+<section id="screen-run" class="screen">
+  <div class="hud">
+    <span><i class="label">score</i><b class="value" id="hud-score">0</b></span>
+    <span><i class="label">wpm</i><b class="value"><span id="hud-wpm">0</span><span class="of"> / <span id="hud-demand">40</span></span></b></span>
+    <span><i class="label">rhythm</i><b class="value" id="hud-rhythm">50</b></span>
+    <span class="spacer"></span>
+    <span class="chapter"><i class="label" id="hud-chapter-label">chapter one</i><b class="name" id="hud-chapter">open field</b></span>
+    <span class="chapter"><i class="label" id="strike-label">strikes</i><div id="strikes"><i></i><i></i><i></i></div></span>
+  </div>
+
+  <div id="stage">
+    <div class="branch" id="branch-safe"></div>
+    <div id="track"><div id="line"></div></div>
+    <div id="caret"><div id="caret-line"></div></div>
+    <div id="deadline"><i></i></div>
+    <div id="edge"></div>
+    <canvas id="rail"></canvas>
+    <div class="branch" id="branch-greedy"></div>
+  </div>
+
+  <div class="bar"><div id="bar-fill"></div><div id="bar-notch"></div></div>
+</section>
+
+<section id="screen-result" class="screen">
+  <div class="sheet" id="result-sheet"></div>
+</section>
+
+<script>
+/* src/keymap.js */
+(function (root) {
+  'use strict';
+
+  const ROWS = { top: 'qwertyuiop', home: 'asdfghjkl', bottom: 'zxcvbnm' };
+
+  // 0-3 left pinky..index, 5 thumb, 6-9 right index..pinky
+  const FINGERS = {
+    q: 0, a: 0, z: 0,
+    w: 1, s: 1, x: 1,
+    e: 2, d: 2, c: 2,
+    r: 3, f: 3, v: 3, t: 3, g: 3, b: 3,
+    y: 6, h: 6, n: 6, u: 6, j: 6, m: 6,
+    i: 7, k: 7,
+    o: 8, l: 8,
+    p: 9
+  };
+
+  function keyInfo(ch) {
+    if (ch === ' ') return { hand: 'T', row: 'space', finger: 5 };
+    const finger = FINGERS[ch];
+    if (finger === undefined) return null;
+    let row = null;
+    for (const name of Object.keys(ROWS)) {
+      if (ROWS[name].indexOf(ch) !== -1) { row = name; break; }
+    }
+    return { hand: finger <= 3 ? 'L' : 'R', row: row, finger: finger };
+  }
+
+  function tagWord(word) {
+    const infos = [];
+    for (const ch of word) {
+      const info = keyInfo(ch);
+      if (!info) throw new Error('word "' + word + '" contains unmappable "' + ch + '"');
+      infos.push(info);
+    }
+
+    const hands = infos.map(i => i.hand).join('');
+    const rows = infos.map(i => i.row[0]).join('');
+    const fingers = infos.map(i => i.finger);
+
+    let home = 0, top = 0, alt = 0, run = 1, maxRun = 1, sameFinger = 0;
+    for (let i = 0; i < infos.length; i++) {
+      if (infos[i].row === 'home') home++;
+      if (infos[i].row === 'top') top++;
+      if (i > 0) {
+        if (infos[i].hand !== infos[i - 1].hand) { alt++; run = 1; }
+        else { run++; if (run > maxRun) maxRun = run; }
+        if (infos[i].finger === infos[i - 1].finger && word[i] !== word[i - 1]) sameFinger++;
+      }
+    }
+
+    const transitions = Math.max(1, infos.length - 1);
+    const left = hands.split('').filter(h => h === 'L').length;
+    const right = hands.length - left;
+
+    return {
+      word: word,
+      len: word.length,
+      hands: hands,
+      rows: rows,
+      fingers: fingers,
+      homeFrac: home / word.length,
+      topFrac: top / word.length,
+      altFrac: infos.length > 1 ? alt / transitions : 0,
+      maxSameHandRun: maxRun,
+      sameFingerPairs: sameFinger,
+      hand: right > left ? 'R' : 'L'
+    };
+  }
+
+  const api = { keyInfo, tagWord, ROWS, FINGERS };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.cadence = Object.assign(root.cadence || {}, api);
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* src/words.js */
+(function (root) {
+  'use strict';
+
+  const WORDS = [
+    'as','at','be','by','do','go','he','if','in','is','it','me','my','no','of','on','or','so','to','up','us','we',
+    'all','and','any','are','but','can','day','did','far','for','get','got','had','has','her','him','his','how',
+    'its','lad','let','man','may','new','not','now','odd','off','old','one','our','out','own','put','red','rid',
+    'row','run','sat','saw','say','sea','see','set','she','sit','six','sky','son','ten','the','tie','too','top',
+    'toe','try','two','use','war','was','way','who','why','win','yes','yet','you',
+    'able','also','area','away','back','been','best','both','call','came','come','dark','dash','days','deal',
+    'does','done','down','each','ever','eyes','face','fact','fall','feel','feet','fell','felt','find','fire',
+    'five','flat','flow','form','four','free','from','full','gave','give','glad','goes','gold','gone','good',
+    'grew','hair','half','hall','hand','hard','have','head','hear','heat','held','help','here','high','hill',
+    'hold','hole','home','hope','hour','idea','into','join','just','keep','kept','kind','knew','know','lads',
+    'land','last','late','lead','left','less','life','like','line','link','list','live','long','look','lost',
+    'made','make','many','mean','mind','mine','moon','more','most','move','much','must','name','near','need',
+    'next','nine','none','noon','note','once','only','open','over','part','past','plan','play','poet','pull',
+    'pump','read','real','rest','ride','road','rock','role','room','rope','rose','rush','said','same','sent',
+    'shed','shot','show','side','sign','size','slow','snow','sold','some','soon','sort','soul','star','stay',
+    'step','stop','such','sure','take','talk','tale','tell','than','that','them','then','they','thin','this',
+    'tide','till','time','tire','told','took','tore','tour','town','tree','true','turn','type','upon','used',
+    'very','view','wait','walk','wall','want','warm','ways','wear','well','went','were','what','when','whom',
+    'wide','will','wind','wire','wish','with','word','wore','work','worn','your','milk','unit','even',
+    'aghast','asked','after','again','alone','along','among','arise','blend','bring','brown','built','carry',
+    'cause','clear','close','coast','could','dealt','dream','drink','early','eight','every',
+    'exist','feast','field','fight','first','flash','flask','float','floor','flour','focus','force','found',
+    'glass','great','green','ground','group','grown','guard','guess','happen','heard','heart','heavy','holly',
+    'honest','horse','house','human','hurry','island','being','before','always','jolly','known','large','later','laugh','learn','least',
+    'leave','level','light','local','loose','lower','major','maybe','might','minor','month',
+    'mouth','music','never','night','north','noise','nylon','ocean','offer','often','onion','order','other',
+    'outer','panel','paper','party','peace','phase','piece','pilot','place','plain','plant','point',
+    'power','press','pride','prime','print','proof','proud','quick','quiet','quite','radio','raise','range',
+    'ratio','reach','ready','refer','relay','reply','right','river','rough','round','royal','rural',
+    'salad','scale','scene','sense','serve','seven','shall','shape','share','sharp','shelf','shell','shift',
+    'shore','short','shown','sight','since','skill','sleep','slept','small','smart','smile','smoke','solid',
+    'solve','sound','south','space','spare','speak','speed','spend','spent','split','spoke','sport','staff',
+    'stage','stand','start','state','steam','steel','stick','still','stock','stone','stood','store','storm',
+    'story','strip','study','style','sugar','suite','sweat','sweet','table','taken','taste','teach','terms',
+    'thank','their','theme','there','these','thick','thing','think','third','those','three','threw','throw',
+    'tight','timer','title','today','tooth','total','touch','tower','trade','train','treat','trend','trial',
+    'tried','trust','truth','twice','under','union','until','upper','urban','usual','value','video',
+    'visit','vital','voice','waste','watch','water','wheel','where','which','while','white','whole','whose',
+    'woman','world','worry','worse','worth','would','wound','write','wrong','wrote','young',
+    'already','amongst','another','appears','approach','attention','balance','because','becomes','beginning',
+    'brothers','builder','capital','careful','certain','chapter','children','clearly','college','company',
+    'complete','concern','consider','contains','continue','cottage','country','created','dealing','decided',
+    'details','develop','distance','drawing','dressed','eastern','elderly','emerged','engaged','evening',
+    'exactly','example','existing','expected','extended','families','fashion','feature','feeling','figures',
+    'finding','flowing','focused','forming','forward','freedom','further','gardens','general','getting',
+    'greater','growing','handled','happens','hearing','heavily','helpful','herself','himself','history',
+    'holding','however','hundred','imagine','include','instead','journey','keeping','kitchen','language',
+    'leading','learned','leaving','letters','library','listen','looking','machine','manager','meaning',
+    'measure','meeting','members','message','million','minutes','missing','mistake','moments','morning',
+    'mountain','natural','nothing','notices','observe','obvious','opening','ordinary','outside','painted',
+    'parents','passage','passing','patient','pattern','perfect','perhaps','picture','pleased','pointed',
+    'popular','portion','present','pressed','primary','printed','problem','process','produce','promise',
+    'protect','provide','purpose','quarter','quietly','reached','reading','realise','reasons','receive',
+    'records','regular','related','remains','remember','reports','require','respect','results','retired',
+    'rolling','running','sailing','sampled','scoring','seasons','sending','serious','service','setting',
+    'sharing','shortly','showing','similar','sitting','sleeping','slowing','smaller','somehow','someone',
+    'something','sometimes','somewhere','speaking','special','specific','spending','standing','started',
+    'station','staying','stories','straight','stretch','strange','strongly','student','studied','subject',
+    'succeed','suggest','summary','support','suppose','surface','teacher','telling','terrible','thinking',
+    'thought','through','tonight','totally','touched','towards','trading','traffic','trouble','turning',
+    'unusual','useful','usually','village','waiting','walking','wanting','warning','watched','wearing',
+    'weather','wedding','weekend','welcome','western','whereas','whether','willing','winning','without',
+    'working','worried','writing','younger'
+  ];
+
+  const TOP200 = new Set([
+    'the','and','for','are','but','not','you','all','any','can','had','her','was','one','our','out','day','get',
+    'has','him','his','how','man','new','now','odd','old','see','two','way','who','did','its','let','put','say',
+    'she','too','use','that','with','have','this','from','they','will','what','when','your','said','there',
+    'their','would','make','like','time','just','know','take','into','good','some','could','them','than',
+    'then','look','only','come','over','also','back','after','work','first','well','even','want','because',
+    'these','give','most','very','much','such','long','made','many','where','through','being','before',
+    'right','still','never','under','while','might','great','again','place','another','found',
+    'every','those','world','without','nothing','something','thought','always'
+  ]);
+
+  const api = { WORDS, TOP200 };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.cadence = Object.assign(root.cadence || {}, api);
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* src/generator.js */
+(function (root) {
+  'use strict';
+
+  const req = (typeof require !== 'undefined' && typeof module !== 'undefined');
+  const km = req ? require('./keymap.js') : root.cadence;
+  const wd = req ? require('./words.js') : root.cadence;
+  const tagWord = km.tagWord;
+  const WORDS = wd.WORDS;
+  const TOP200 = wd.TOP200;
+
+  const ROLL_BIGRAMS = [
+    'oi','io','er','re','we','ew','po','op','lk','kl','ui','iu',
+    'ol','lo','ki','ik','sd','ds','df','fd','as','sa','ty','rt'
+  ];
+
+  function hasRoll(word) {
+    for (let i = 0; i < word.length - 1; i++) {
+      if (ROLL_BIGRAMS.indexOf(word.slice(i, i + 2)) !== -1) return true;
+    }
+    return false;
+  }
+
+  const CHAPTERS = [
+    { key: 'open-field',    name: 'open field',    from: 40,  filter: t => t.altFrac >= 0.6 },
+    { key: 'home-ground',   name: 'home ground',   from: 60,  filter: t => t.homeFrac >= 0.7 },
+    { key: 'common-tongue', name: 'common tongue', from: 80,  filter: t => TOP200.has(t.word) },
+    { key: 'short-work',    name: 'short work',    from: 100, filter: t => t.len <= 4 },
+    { key: 'inward-roll',   name: 'inward roll',   from: 120, filter: t => hasRoll(t.word) },
+    { key: 'long-form',     name: 'long form',     from: 140, filter: t => t.len >= 6 },
+    { key: 'one-hand',      name: 'one hand',      from: 160, filter: t => t.maxSameHandRun >= 3 },
+    { key: 'thin-air',      name: 'thin air',      from: 180, filter: t => t.topFrac >= 0.7 }
+  ];
+
+  function chapterAt(demand) {
+    let idx = 0;
+    for (let i = 0; i < CHAPTERS.length; i++) if (demand >= CHAPTERS[i].from) idx = i;
+    return idx;
+  }
+
+  function makeRng(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function rejects(cand, recentTags, chapterIndex) {
+    const recent = recentTags.slice(-12);
+    for (const r of recent) if (r.word === cand.word) return 'repeat';
+
+    const prev = recent[recent.length - 1];
+    const prev2 = recent[recent.length - 2];
+
+    if (prev && prev2 && prev.word[0] === cand.word[0] && prev2.word[0] === cand.word[0]) {
+      return 'same-start';
+    }
+
+    if (prev) {
+      const last = prev.word[prev.word.length - 1];
+      const first = cand.word[0];
+      const a = km.keyInfo(last), b = km.keyInfo(first);
+      if (a && b && a.finger === b.finger && last !== first) return 'same-finger-boundary';
+    }
+
+    const isOneHand = CHAPTERS[chapterIndex].key === 'one-hand';
+    if (!isOneHand && prev && prev2 && prev.hand === cand.hand && prev2.hand === cand.hand) {
+      return 'same-hand-run';
+    }
+
+    return null;
+  }
+
+  function scoreCandidate(cand, prev, chapterIndex) {
+    let s = 0;
+    if (prev) {
+      const last = km.keyInfo(prev.word[prev.word.length - 1]);
+      const first = km.keyInfo(cand.word[0]);
+      if (last && first && last.hand !== first.hand) s += 2;
+    }
+    if (CHAPTERS[chapterIndex].key === 'inward-roll' && hasRoll(cand.word)) s += 2;
+    s -= cand.sameFingerPairs;
+    return s;
+  }
+
+  const POOL_CACHE = {};
+  function poolFor(chapterIndex) {
+    if (!POOL_CACHE[chapterIndex]) {
+      POOL_CACHE[chapterIndex] = WORDS.map(tagWord).filter(CHAPTERS[chapterIndex].filter);
+    }
+    return POOL_CACHE[chapterIndex];
+  }
+
+  // the greedy branch in draft C: denser, longer, worse transitions
+  let GREEDY_CACHE = null;
+  function greedyPool() {
+    if (!GREEDY_CACHE) {
+      GREEDY_CACHE = WORDS.map(tagWord)
+        .filter(t => t.len >= 5 && (t.sameFingerPairs > 0 || t.maxSameHandRun >= 3 || t.len >= 7));
+    }
+    return GREEDY_CACHE;
+  }
+
+  function createGenerator(seed) {
+    const rng = makeRng(seed);
+    const recent = [];
+
+    function pick(pool, chapterIndex) {
+      let best = null, bestScore = -Infinity;
+      for (let attempt = 0; attempt < 64 && (best === null || attempt < 8); attempt++) {
+        const cand = pool[Math.floor(rng() * pool.length)];
+        if (!cand) continue;
+        if (rejects(cand, recent, chapterIndex) !== null) continue;
+        const s = scoreCandidate(cand, recent[recent.length - 1], chapterIndex);
+        if (s > bestScore) { bestScore = s; best = cand; }
+      }
+      if (best === null) {
+        for (const cand of pool) {
+          if (rejects(cand, recent, chapterIndex) === null) { best = cand; break; }
+        }
+      }
+      if (best === null) throw new Error('no legal word for chapter ' + chapterIndex);
+      recent.push(best);
+      if (recent.length > 12) recent.shift();
+      return best.word;
+    }
+
+    function words(chapterIndex, n) {
+      const out = [];
+      for (let i = 0; i < n; i++) out.push(pick(poolFor(chapterIndex), chapterIndex));
+      return out;
+    }
+
+    // draft B: three-word bars
+    function phrases(chapterIndex, n, perPhrase) {
+      const size = perPhrase || 3;
+      const out = [];
+      for (let i = 0; i < n; i++) out.push(words(chapterIndex, size));
+      return out;
+    }
+
+    // draft C: two valid lines that diverge on the first character and
+    // reconverge afterwards. the greedy line is longer and denser.
+    function branchPair(chapterIndex) {
+      const safe = words(chapterIndex, 3);
+      let greedy = null;
+      for (let attempt = 0; attempt < 40; attempt++) {
+        const cand = words(chapterIndex === 7 ? 7 : 5, 1)[0];
+        const pool = greedyPool();
+        const extra = pool[Math.floor(rng() * pool.length)];
+        const first = cand[0];
+        if (first !== safe[0][0]) {
+          greedy = [cand, extra ? extra.word : cand, words(chapterIndex, 1)[0]];
+          break;
+        }
+      }
+      if (!greedy) {
+        // guaranteed fallback: take any greedy word whose first letter differs
+        const pool = greedyPool().filter(t => t.word[0] !== safe[0][0]);
+        const a = pool[Math.floor(rng() * pool.length)];
+        const b = pool[Math.floor(rng() * pool.length)];
+        greedy = [a.word, b.word, words(chapterIndex, 1)[0]];
+      }
+      const safeLen = safe.join(' ').length;
+      const greedyLen = greedy.join(' ').length;
+      return {
+        safe: safe,
+        greedy: greedy,
+        payout: 1.6,
+        safeLen: safeLen,
+        greedyLen: greedyLen
+      };
+    }
+
+    return { recent: recent, words: words, phrases: phrases, branchPair: branchPair };
+  }
+
+  const api = {
+    CHAPTERS, chapterAt, makeRng, createGenerator, rejects, hasRoll, poolFor, greedyPool
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.cadence = Object.assign(root.cadence || {}, api);
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* src/metrics.js */
+(function (root) {
+  'use strict';
+
+  const RHYTHM_WINDOW = 16;
+  const RHYTHM_MIN_SAMPLES = 8;
+  const INTERVAL_CLAMP_MS = 600;
+  const CV_AT_ZERO = 0.35;   // dispersion at which rhythm reads 0
+  const SPEED_WINDOW_MS = 3000;
+
+  function clamp(x, lo, hi) { return x < lo ? lo : (x > hi ? hi : x); }
+
+  function median(nums) {
+    const xs = nums.slice().sort((a, b) => a - b);
+    if (xs.length === 0) return 0;
+    const mid = xs.length >> 1;
+    return xs.length % 2 ? xs[mid] : (xs[mid - 1] + xs[mid]) / 2;
+  }
+
+  // Dispersion of keystroke intervals, as a 0-100 score.
+  //
+  // Deliberately NOT median absolute deviation: MAD has a 50% breakdown point,
+  // so ten even intervals among sixteen hold the median deviation at exactly
+  // zero and a badly lurching 10/6 split scores a perfect 100. Instead we drop
+  // the single largest deviation - which is what buys forgiveness for one
+  // hiccup, explicitly rather than as an accident of the estimator - and take
+  // the mean of the rest.
+  function rhythmOf(intervals) {
+    const xs = intervals.slice(-RHYTHM_WINDOW).map(d => Math.min(d, INTERVAL_CLAMP_MS));
+    if (xs.length < RHYTHM_MIN_SAMPLES) return 50;
+
+    const m = median(xs);
+    if (m === 0) return 0;
+
+    const devs = xs.map(d => Math.abs(d - m)).sort((a, b) => a - b);
+    devs.pop();                                     // forgive the worst single slip
+    const mean = devs.reduce((a, b) => a + b, 0) / devs.length;
+
+    const cv = clamp(mean / m, 0, 1);
+    return Math.round(100 * (1 - clamp(cv / CV_AT_ZERO, 0, 1)));
+  }
+
+  const WARM_KEYS = 10;        // keystrokes before rolling wpm means anything
+
+  function createSpeed() { return { times: [] }; }
+
+  function isWarm(speed) { return speed.times.length >= WARM_KEYS; }
+
+  function pushKey(speed, nowMs) {
+    speed.times.push(nowMs);
+    if (speed.times.length > 512) speed.times.splice(0, speed.times.length - 512);
+  }
+
+  // Divides by the window that has actually elapsed, not the nominal 3s. A fixed
+  // 3s denominator reads ~4 wpm at the second keystroke of a run however fast you
+  // are typing - it is counting characters you have not had time to type yet -
+  // which made the opening second of every run unwinnable in draft A.
+  function wpmAt(speed, nowMs) {
+    const times = speed.times;
+    if (times.length === 0) return 0;
+    const cutoff = nowMs - SPEED_WINDOW_MS;
+    let n = 0, oldest = times[times.length - 1];
+    for (let i = times.length - 1; i >= 0; i--) {
+      if (times[i] < cutoff) break;
+      n++;
+      oldest = times[i];
+    }
+    if (n === 0) return 0;
+    const windowMs = Math.max(600, Math.min(SPEED_WINDOW_MS, nowMs - oldest));
+    return (n / 5) * (60000 / windowMs);
+  }
+
+  // Elapsed time on the engine's own clock. Reading performance.now() instead
+  // means the duration is measured on a different clock from the one the run was
+  // driven with, which reports nonsense for any replayed or stepped run.
+  function elapsedMs(run) {
+    if (run.startedAt === null) return 0;
+    return Math.max(0, (run.nowMs || run.startedAt) - run.startedAt);
+  }
+
+  function pointsFor(v, rhythm, combo) {
+    const speedMult = clamp(v / 60, 0.5, 3.0);
+    const rhythmMult = 0.6 + 0.9 * (rhythm / 100);
+    const comboMult = 1 + Math.min(combo, 300) / 300;
+    return 10 * speedMult * rhythmMult * comboMult;
+  }
+
+  const api = {
+    clamp, median, rhythmOf, createSpeed, pushKey, wpmAt, pointsFor, isWarm, WARM_KEYS, elapsedMs,
+    RHYTHM_WINDOW, INTERVAL_CLAMP_MS, SPEED_WINDOW_MS
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.cadence = Object.assign(root.cadence || {}, api);
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* src/survival.js */
+(function (root) {
+  'use strict';
+
+  const req = (typeof require !== 'undefined' && typeof module !== 'undefined');
+  const m = req ? require('./metrics.js') : root.cadence;
+  const clamp = m.clamp;
+  const median = m.median;
+
+  const W = 40;
+  const LEGIBLE = 0.18;
+  const SAMPLE_EVERY_MS = 250;
+  const SAMPLE_WINDOW = 80;
+  const TARGET_FRACTION = 0.85;
+  const EASE_PER_SECOND = 0.07;
+  const MIN_RISE_PER_SECOND = 0.5;
+
+  function createDemand() { return { value: 40, samples: [], lastSampleAt: -Infinity }; }
+
+  function sampleSpeed(demand, v, nowMs) {
+    if (nowMs - demand.lastSampleAt < SAMPLE_EVERY_MS) return;
+    demand.lastSampleAt = nowMs;
+    demand.samples.push(v);
+    if (demand.samples.length > SAMPLE_WINDOW) demand.samples.shift();
+  }
+
+  function sustainedOf(demand) {
+    if (demand.samples.length < 4) return 40;
+    return median(demand.samples);
+  }
+
+  function stepDemand(demand, dtSeconds) {
+    const target = TARGET_FRACTION * sustainedOf(demand);
+    const eased = (target - demand.value) * EASE_PER_SECOND;
+    demand.value += Math.max(MIN_RISE_PER_SECOND, eased) * dtSeconds;
+    return demand.value;
+  }
+
+  function baseInk(ratio) { return clamp((ratio - 0.85) / 0.50, 0, 1); }
+
+  function frontWidth(ratio) { return 0.85 * W * clamp((0.94 - ratio) / 0.40, 0, 1); }
+
+  function opacityAt(d, ratio) {
+    const base = baseInk(ratio);
+    const f = frontWidth(ratio);
+    const t = clamp((d - f) / (W - f), 0, 1);
+    return base + (1 - base) * Math.pow(t, 0.8);
+  }
+
+  function isBlind(ratio) { return opacityAt(0, ratio) < LEGIBLE; }
+
+  function unreadableWidth(ratio) {
+    if (!isBlind(ratio)) return 0;
+    const base = baseInk(ratio);
+    const f = frontWidth(ratio);
+    const t = Math.pow((LEGIBLE - base) / (1 - base), 1 / 0.8);
+    return f + t * (W - f);
+  }
+
+  const api = {
+    W, LEGIBLE, createDemand, sampleSpeed, sustainedOf, stepDemand,
+    baseInk, frontWidth, opacityAt, isBlind, unreadableWidth
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.cadence = Object.assign(root.cadence || {}, api);
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* src/draft-a.js */
+// DRAFT A - "drying ink"
+// Pressure is legibility. The ink dries ahead of your caret at a rate the demand
+// sets; fall below 94% of it and a hole opens in the page. You can only be killed
+// by being wrong about something you could not see.
+(function (root) {
+  'use strict';
+
+  const req = (typeof require !== 'undefined' && typeof module !== 'undefined');
+  const m = req ? require('./metrics.js') : root.cadence;
+  const s = req ? require('./survival.js') : root.cadence;
+  const g = req ? require('./generator.js') : root.cadence;
+
+  const MAX_STRIKES = 3;
+  const STALL_MS = 2000;
+  const LOOKAHEAD = 200;
+  const CHUNK_WORDS = 40;
+
+  const WARMUP_RATIO = 1.2;   // comfortably legible while the speed tracker fills
+
+  const META = {
+    id: 'a',
+    name: 'drying ink',
+    blurb: 'the ink dries ahead of your caret. keep up or type from memory.',
+    pressure: 'legibility'
+  };
+
+  function topUp(run) {
+    while (run.text.length < run.cursor + LOOKAHEAD) {
+      const words = run.gen.words(run.chapterIndex, CHUNK_WORDS);
+      run.text += (run.text.length ? ' ' : '') + words.join(' ');
+    }
+  }
+
+  function createRun(seed) {
+    const run = {
+      draft: 'a', seed: seed, gen: g.createGenerator(seed),
+      text: '', cursor: 0, marks: [], rhythmAt: [],
+      combo: 0, maxCombo: 0, score: 0, strikes: 0, correct: 0, total: 0,
+      v: 0, peakV: 0, ratio: 1, rhythm: 50, chapterIndex: 0,
+      startedAt: null, lastKeyAt: null, nowMs: 0, intervals: [], blindSince: null,
+      ended: false, endReason: null,
+      demand: s.createDemand(), speed: m.createSpeed(), wpmTrace: []
+    };
+    topUp(run);
+    return run;
+  }
+
+  function endRun(run, reason) { run.ended = true; run.endReason = reason; }
+
+  function onKey(run, key, nowMs) {
+    if (run.ended) return { correct: false, wasBlind: false, strike: false, ended: true };
+    if (run.startedAt === null) run.startedAt = nowMs;
+    run.nowMs = nowMs;
+
+    const wasBlind = s.isBlind(run.ratio);
+    const correct = key === run.text[run.cursor];
+
+    if (run.lastKeyAt !== null) {
+      run.intervals.push(nowMs - run.lastKeyAt);
+      if (run.intervals.length > 64) run.intervals.shift();
+    }
+    run.lastKeyAt = nowMs;
+
+    m.pushKey(run.speed, nowMs);
+    run.v = m.wpmAt(run.speed, nowMs);
+    if (run.v > run.peakV) run.peakV = run.v;
+    run.rhythm = m.rhythmOf(run.intervals);
+
+    run.total++;
+    run.marks[run.cursor] = correct ? 'ok' : 'err';
+    run.rhythmAt[run.cursor] = run.rhythm;
+    run.cursor++;
+
+    let strike = false;
+    if (correct) {
+      run.correct++;
+      run.combo++;
+      if (run.combo > run.maxCombo) run.maxCombo = run.combo;
+      run.score += m.pointsFor(run.v, run.rhythm, run.combo);
+      run.blindSince = wasBlind ? nowMs : null;
+    } else {
+      run.combo = 0;
+      if (wasBlind) {
+        strike = true;
+        run.strikes++;
+        if (run.strikes >= MAX_STRIKES) endRun(run, 'strikes');
+      }
+    }
+
+    topUp(run);
+    return { correct: correct, wasBlind: wasBlind, strike: strike, ended: run.ended };
+  }
+
+  function tick(run, nowMs, dtSeconds) {
+    if (run.ended || run.startedAt === null) return;
+    run.nowMs = nowMs;
+
+    run.v = m.wpmAt(run.speed, nowMs);
+
+    // Until the speed tracker is warm, rolling wpm is meaningless - it reads near
+    // zero however fast you are going. Pin the ratio somewhere comfortable and
+    // keep the cold-start zeros out of the demand ratchet.
+    if (!m.isWarm(run.speed)) {
+      run.ratio = WARMUP_RATIO;
+      s.stepDemand(run.demand, dtSeconds);
+    } else {
+      s.sampleSpeed(run.demand, run.v, nowMs);
+      s.stepDemand(run.demand, dtSeconds);
+      run.ratio = run.demand.value > 0 ? run.v / run.demand.value : 0;
+    }
+
+    const next = g.chapterAt(run.demand.value);
+    if (next > run.chapterIndex) run.chapterIndex = next;
+
+    if (s.isBlind(run.ratio)) {
+      if (run.blindSince === null) run.blindSince = nowMs;
+      else if (nowMs - run.blindSince >= STALL_MS) endRun(run, 'dried');
+    } else {
+      run.blindSince = null;
+    }
+
+    run.wpmTrace.push({ t: nowMs - run.startedAt, v: run.v, demand: run.demand.value });
+    if (run.wpmTrace.length > 4000) run.wpmTrace.shift();
+  }
+
+  // how the renderer should ink the character `d` ahead of the caret
+  function inkAhead(run, d) { return d >= s.W ? 1 : s.opacityAt(d, run.ratio); }
+
+  function endLabel(run) {
+    return run.endReason === 'strikes' ? 'three blind guesses' : 'the page dried out';
+  }
+
+  const api = {
+    draftA: {
+      META, createRun, onKey, tick, inkAhead, endLabel,
+      MAX_STRIKES, STALL_MS, strikesOf: run => run.strikes, maxStrikes: () => MAX_STRIKES
+    }
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api.draftA;
+  else root.cadence = Object.assign(root.cadence || {}, api);
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* src/draft-b.js */
+// DRAFT B - "the lock"
+// Pressure is temporal. Text comes in three-word bars, each with a deadline set by
+// the demand. Finish a bar clean and in rhythm and it LOCKS - banked at double and
+// untakeable. Miss the deadline and the bar is skipped like a missed note, and
+// three missed bars end the run. Full legibility throughout: nothing fades.
+(function (root) {
+  'use strict';
+
+  const req = (typeof require !== 'undefined' && typeof module !== 'undefined');
+  const m = req ? require('./metrics.js') : root.cadence;
+  const s = req ? require('./survival.js') : root.cadence;
+  const g = req ? require('./generator.js') : root.cadence;
+
+  const MAX_DROPS = 3;
+  const WORDS_PER_BAR = 3;
+  const SLACK = 1.15;          // grace on each bar's deadline
+  const LOCK_RHYTHM = 70;      // rhythm needed at bar end to lock it
+  const LOCK_BONUS = 2.0;
+  const BARS_AHEAD = 12;
+  const IDLE_DROP_MS = 1500;   // hands off the keys drops the bar at once
+
+  const WARMUP_RATIO = 1.2;   // comfortably legible while the speed tracker fills
+
+  const META = {
+    id: 'b',
+    name: 'the lock',
+    blurb: 'three-word bars on a deadline. hold the rhythm and they lock.',
+    pressure: 'deadlines'
+  };
+
+  function barCharsPerSecond(demandWpm) { return (demandWpm * 5) / 60; }
+
+  function topUp(run) {
+    while (run.bars.length < run.barIndex + BARS_AHEAD) {
+      const words = run.gen.phrases(run.chapterIndex, 1, WORDS_PER_BAR)[0];
+      const text = words.join(' ') + ' ';
+      const start = run.text.length;
+      run.bars.push({
+        words: words, text: text, start: start, end: start + text.length,
+        state: 'pending', deadlineAt: null, allowedMs: 0, errors: 0, pot: 0
+      });
+      run.text += text;
+    }
+  }
+
+  function activate(run, nowMs) {
+    const bar = run.bars[run.barIndex];
+    if (!bar || bar.state !== 'pending') return;
+    const cps = barCharsPerSecond(run.demand.value);
+    bar.allowedMs = (bar.text.length / cps) * 1000 * SLACK;
+    bar.deadlineAt = nowMs + bar.allowedMs;
+    bar.state = 'active';
+  }
+
+  function createRun(seed) {
+    const run = {
+      draft: 'b', seed: seed, gen: g.createGenerator(seed),
+      text: '', cursor: 0, marks: [], rhythmAt: [],
+      bars: [], barIndex: 0,
+      locked: 0, loose: 0, dropped: 0, idleDrops: 0,
+      combo: 0, maxCombo: 0, score: 0, correct: 0, total: 0,
+      v: 0, peakV: 0, ratio: 1, rhythm: 50, chapterIndex: 0,
+      startedAt: null, lastKeyAt: null, nowMs: 0, intervals: [],
+      ended: false, endReason: null,
+      demand: s.createDemand(), speed: m.createSpeed(), wpmTrace: []
+    };
+    topUp(run);
+    return run;
+  }
+
+  function endRun(run, reason) { run.ended = true; run.endReason = reason; }
+
+  function closeBar(run, state) {
+    const bar = run.bars[run.barIndex];
+    bar.state = state;
+    if (state === 'locked') { run.score += bar.pot * LOCK_BONUS; run.locked++; }
+    else if (state === 'loose') { run.score += bar.pot; run.loose++; }
+    else { run.dropped++; run.combo = 0; }
+    run.barIndex++;
+    if (run.dropped >= MAX_DROPS) endRun(run, 'dropped');
+    topUp(run);
+  }
+
+  function dropBar(run, nowMs) {
+    const bar = run.bars[run.barIndex];
+    for (let i = run.cursor; i < bar.end; i++) run.marks[i] = 'miss';
+    run.cursor = bar.end;
+    closeBar(run, 'dropped');
+    if (!run.ended) activate(run, nowMs);
+  }
+
+  function onKey(run, key, nowMs) {
+    if (run.ended) return { correct: false, ended: true, closed: null };
+    if (run.startedAt === null) { run.startedAt = nowMs; activate(run, nowMs); }
+    run.nowMs = nowMs;
+
+    const bar = run.bars[run.barIndex];
+    const correct = key === run.text[run.cursor];
+
+    if (run.lastKeyAt !== null) {
+      run.intervals.push(nowMs - run.lastKeyAt);
+      if (run.intervals.length > 64) run.intervals.shift();
+    }
+    run.lastKeyAt = nowMs;
+    run.idleDrops = 0;
+
+    m.pushKey(run.speed, nowMs);
+    run.v = m.wpmAt(run.speed, nowMs);
+    if (run.v > run.peakV) run.peakV = run.v;
+    run.rhythm = m.rhythmOf(run.intervals);
+
+    run.total++;
+    run.marks[run.cursor] = correct ? 'ok' : 'err';
+    run.rhythmAt[run.cursor] = run.rhythm;
+    run.cursor++;
+
+    if (correct) {
+      run.correct++;
+      run.combo++;
+      if (run.combo > run.maxCombo) run.maxCombo = run.combo;
+      bar.pot += m.pointsFor(run.v, run.rhythm, run.combo);
+    } else {
+      run.combo = 0;
+      bar.errors++;
+    }
+
+    let closed = null;
+    if (run.cursor >= bar.end) {
+      const clean = bar.errors === 0;
+      const inRhythm = run.rhythm >= LOCK_RHYTHM;
+      closed = (clean && inRhythm) ? 'locked' : 'loose';
+      closeBar(run, closed);
+      if (!run.ended) activate(run, nowMs);
+    }
+
+    return { correct: correct, ended: run.ended, closed: closed };
+  }
+
+  function tick(run, nowMs, dtSeconds) {
+    if (run.ended || run.startedAt === null) return;
+    run.nowMs = nowMs;
+
+    run.v = m.wpmAt(run.speed, nowMs);
+
+    // Until the speed tracker is warm, rolling wpm is meaningless - it reads near
+    // zero however fast you are going. Pin the ratio somewhere comfortable and
+    // keep the cold-start zeros out of the demand ratchet.
+    if (!m.isWarm(run.speed)) {
+      run.ratio = WARMUP_RATIO;
+      s.stepDemand(run.demand, dtSeconds);
+    } else {
+      s.sampleSpeed(run.demand, run.v, nowMs);
+      s.stepDemand(run.demand, dtSeconds);
+      run.ratio = run.demand.value > 0 ? run.v / run.demand.value : 0;
+    }
+
+    const next = g.chapterAt(run.demand.value);
+    if (next > run.chapterIndex) run.chapterIndex = next;
+
+    // An idle gap costs one bar per IDLE_DROP_MS of continued idleness. Waiting
+    // out each bar's own deadline instead would make a full stop take a tedious
+    // 15s; dropping all three at once would end it in 1.6s. One per interval
+    // puts a hands-off run at 4.5s, in line with draft A's two seconds.
+    if (run.lastKeyAt !== null) {
+      const owed = Math.floor((nowMs - run.lastKeyAt) / IDLE_DROP_MS);
+      while (!run.ended && run.idleDrops < owed) { run.idleDrops++; dropBar(run, nowMs); }
+    }
+
+    let guard = 0;
+    while (!run.ended && guard++ < 8) {
+      const bar = run.bars[run.barIndex];
+      if (!bar) break;
+      if (bar.state === 'pending') activate(run, nowMs);
+      if (bar.deadlineAt !== null && nowMs >= bar.deadlineAt) dropBar(run, nowMs);
+      else break;
+    }
+
+    run.wpmTrace.push({ t: nowMs - run.startedAt, v: run.v, demand: run.demand.value });
+    if (run.wpmTrace.length > 4000) run.wpmTrace.shift();
+  }
+
+  // fraction of the active bar's deadline still remaining, 0-1
+  function barRemaining(run, nowMs) {
+    const bar = run.bars[run.barIndex];
+    if (!bar || bar.deadlineAt === null) return 1;
+    return Math.max(0, Math.min(1, (bar.deadlineAt - nowMs) / bar.allowedMs));
+  }
+
+  function inkAhead() { return 1; }   // draft B never fades the page
+
+  function endLabel() { return 'three bars dropped'; }
+
+  const api = {
+    draftB: {
+      META, createRun, onKey, tick, inkAhead, endLabel, barRemaining,
+      MAX_DROPS, LOCK_RHYTHM, WORDS_PER_BAR, IDLE_DROP_MS,
+      strikesOf: run => run.dropped, maxStrikes: () => MAX_DROPS
+    }
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api.draftB;
+  else root.cadence = Object.assign(root.cadence || {}, api);
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* src/draft-c.js */
+// DRAFT C - "branches"
+// Pressure is spatial: an edge advances from the left at the demand's pace, eating
+// the page. Stay ahead of it. At every junction two lines are valid - the greedy
+// one pays 1.6x but is longer, so taking it costs ground against the chaser. Your
+// fingers choose: the first character you type commits you, because the generator
+// guarantees the two lines diverge on their very first letter.
+(function (root) {
+  'use strict';
+
+  const req = (typeof require !== 'undefined' && typeof module !== 'undefined');
+  const m = req ? require('./metrics.js') : root.cadence;
+  const s = req ? require('./survival.js') : root.cadence;
+  const g = req ? require('./generator.js') : root.cadence;
+
+  const MAX_TOUCHES = 3;
+  const START_LEAD = 26;      // characters of head start
+  // The edge must stay on screen to be a threat. Outpacing the demand let the gap
+  // grow without bound - it reached 116 characters in testing, pushing the edge
+  // off the left of the stage entirely, so the pressure simply vanished for any
+  // competent player. Capping it also keeps the junction a real decision: a greedy
+  // segment costs ~7 characters of ground, so the cap is about six of them.
+  // 40 also fits on screen behind draft C's caret, which sits at 62% for this reason.
+  const MAX_GAP = 40;
+  const REPRIEVE = 16;        // characters the edge is pushed back when it catches you
+  // Tunable so tools/balance.js can sweep them. The target these were chosen
+  // against: an adaptive player (take the hard line only when the gap is big)
+  // must out-score BOTH pure strategies. If always-safe or always-greedy wins,
+  // the junction is not a decision and the mechanic is decoration.
+  // Measured with tools/sweep-c.js across three typist profiles, 6 seeds each:
+  //   always-safe    64,642
+  //   always-greedy  66,654
+  //   adaptive       70,600 - 72,300  (any gap threshold from 14 to 50)
+  // Adaptive beats both pure strategies by 8-12%, so the junction is a real
+  // decision. It is a SHALLOW one: the adaptive curve is nearly flat across
+  // thresholds, so no particular policy is much better than another. A human has
+  // information this sweep does not - it judges only the gap, never how awkward
+  // the two lines actually look - so the ceiling is probably higher in practice.
+  const TUNING = { greedyPayout: 2.0, edgeGreedyMult: 1.25 };
+
+  // Taking your hands off the keys has to cost something promptly. At the demand's
+  // ordinary pace the edge needs ~8s to cross a full lead and ~5s per reprieve, so
+  // a full stop took 24s to end a run. The edge surges while you are idle instead:
+  // the page catching up fast when you are not moving is the obvious reading.
+  const IDLE_SURGE_AFTER_MS = 1200;
+  const EDGE_IDLE_MULT = 4;
+
+  // Why the edge quickens rather than the hard words simply being slower: in
+  // character coordinates a longer branch costs nothing, because the edge has to
+  // traverse those extra characters too - the gap closes at (yourCps - edgeCps)
+  // regardless of path length. And measured against the typist model in
+  // tools/typist.js, the denser greedy text is only ~5% slower to type, which a
+  // 1.6x payout dwarfs. Without an explicit cost the greedy line is strictly
+  // better and the choice is fake.
+
+  const WARMUP_RATIO = 1.2;   // comfortably legible while the speed tracker fills
+
+  const META = {
+    id: 'c',
+    name: 'branches',
+    blurb: 'two valid lines. the hard one pays double. stay ahead of the edge.',
+    pressure: 'a chaser'
+  };
+
+  function cps(demandWpm) { return (demandWpm * 5) / 60; }
+
+  function newBranch(run) {
+    const pair = run.gen.branchPair(run.chapterIndex);
+    run.branch = {
+      safeText: pair.safe.join(' ') + ' ',
+      greedyText: pair.greedy.join(' ') + ' ',
+      payout: TUNING.greedyPayout,
+      committed: null
+    };
+  }
+
+  function commit(run, which) {
+    const b = run.branch;
+    const chosen = which === 'greedy' ? b.greedyText : b.safeText;
+    const mult = which === 'greedy' ? TUNING.greedyPayout : 1;
+    b.committed = which;
+    run.segmentGreedy = which === 'greedy';
+    run.segmentStart = run.text.length;
+    run.segmentEnd = run.text.length + chosen.length;
+    for (let i = 0; i < chosen.length; i++) run.payoutAt.push(mult);
+    run.text += chosen;
+    if (which === 'greedy') run.greedyTaken++; else run.safeTaken++;
+  }
+
+  function createRun(seed) {
+    const run = {
+      draft: 'c', seed: seed, gen: g.createGenerator(seed),
+      text: '', cursor: 0, marks: [], rhythmAt: [], payoutAt: [],
+      branch: null, segmentStart: 0, segmentEnd: 0, segmentGreedy: false,
+      safeTaken: 0, greedyTaken: 0,
+      edge: -START_LEAD, touches: 0, closestGap: Infinity,
+      combo: 0, maxCombo: 0, score: 0, correct: 0, total: 0,
+      v: 0, peakV: 0, ratio: 1, rhythm: 50, chapterIndex: 0,
+      startedAt: null, lastKeyAt: null, nowMs: 0, intervals: [],
+      ended: false, endReason: null,
+      demand: s.createDemand(), speed: m.createSpeed(), wpmTrace: []
+    };
+    newBranch(run);
+    return run;
+  }
+
+  function endRun(run, reason) { run.ended = true; run.endReason = reason; }
+
+  function onKey(run, key, nowMs) {
+    if (run.ended) return { correct: false, ended: true, chose: null };
+    if (run.startedAt === null) run.startedAt = nowMs;
+    run.nowMs = nowMs;
+
+    let chose = null;
+    let correct;
+
+    if (run.branch && run.branch.committed === null) {
+      // the junction: one keystroke decides which line you are on
+      if (key === run.branch.safeText[0]) { commit(run, 'safe'); chose = 'safe'; correct = true; }
+      else if (key === run.branch.greedyText[0]) { commit(run, 'greedy'); chose = 'greedy'; correct = true; }
+      else { commit(run, 'safe'); chose = 'safe'; correct = false; }
+    } else {
+      correct = key === run.text[run.cursor];
+    }
+
+    if (run.lastKeyAt !== null) {
+      run.intervals.push(nowMs - run.lastKeyAt);
+      if (run.intervals.length > 64) run.intervals.shift();
+    }
+    run.lastKeyAt = nowMs;
+
+    m.pushKey(run.speed, nowMs);
+    run.v = m.wpmAt(run.speed, nowMs);
+    if (run.v > run.peakV) run.peakV = run.v;
+    run.rhythm = m.rhythmOf(run.intervals);
+
+    run.total++;
+    run.marks[run.cursor] = correct ? 'ok' : 'err';
+    run.rhythmAt[run.cursor] = run.rhythm;
+    const payout = run.payoutAt[run.cursor] || 1;
+    run.cursor++;
+
+    if (correct) {
+      run.correct++;
+      run.combo++;
+      if (run.combo > run.maxCombo) run.maxCombo = run.combo;
+      run.score += m.pointsFor(run.v, run.rhythm, run.combo) * payout;
+    } else {
+      run.combo = 0;
+    }
+
+    if (run.cursor >= run.segmentEnd) newBranch(run);
+
+    return { correct: correct, ended: run.ended, chose: chose };
+  }
+
+  function tick(run, nowMs, dtSeconds) {
+    if (run.ended || run.startedAt === null) return;
+    run.nowMs = nowMs;
+
+    run.v = m.wpmAt(run.speed, nowMs);
+
+    // Until the speed tracker is warm, rolling wpm is meaningless - it reads near
+    // zero however fast you are going. Pin the ratio somewhere comfortable and
+    // keep the cold-start zeros out of the demand ratchet.
+    if (!m.isWarm(run.speed)) {
+      run.ratio = WARMUP_RATIO;
+      s.stepDemand(run.demand, dtSeconds);
+    } else {
+      s.sampleSpeed(run.demand, run.v, nowMs);
+      s.stepDemand(run.demand, dtSeconds);
+      run.ratio = run.demand.value > 0 ? run.v / run.demand.value : 0;
+    }
+
+    const next = g.chapterAt(run.demand.value);
+    if (next > run.chapterIndex) run.chapterIndex = next;
+
+    const idle = run.lastKeyAt !== null && (nowMs - run.lastKeyAt) > IDLE_SURGE_AFTER_MS;
+    let edgeRate = cps(run.demand.value) * (run.segmentGreedy ? TUNING.edgeGreedyMult : 1);
+    if (idle) edgeRate *= EDGE_IDLE_MULT;
+    run.edge += edgeRate * dtSeconds;
+
+    if (run.cursor - run.edge > MAX_GAP) run.edge = run.cursor - MAX_GAP;
+
+    const gap = run.cursor - run.edge;
+    if (gap < run.closestGap) run.closestGap = gap;
+    if (gap <= 0) {
+      run.touches++;
+      run.edge = run.cursor - REPRIEVE;
+      if (run.touches >= MAX_TOUCHES) endRun(run, 'caught');
+    }
+
+    run.wpmTrace.push({ t: nowMs - run.startedAt, v: run.v, demand: run.demand.value });
+    if (run.wpmTrace.length > 4000) run.wpmTrace.shift();
+  }
+
+  function gapOf(run) { return run.cursor - run.edge; }
+  function inkAhead() { return 1; }
+  function endLabel() { return 'the edge caught you'; }
+
+  const api = {
+    draftC: {
+      META, createRun, onKey, tick, inkAhead, endLabel, gapOf,
+      MAX_TOUCHES, START_LEAD, MAX_GAP, TUNING, EDGE_IDLE_MULT,
+      strikesOf: run => run.touches, maxStrikes: () => MAX_TOUCHES
+    }
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api.draftC;
+  else root.cadence = Object.assign(root.cadence || {}, api);
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* src/rail.js */
+(function (root) {
+  'use strict';
+
+  // 200 px/s. At 0.09 the ticks sat ~6px apart at 160 wpm and read as a texture
+  // rather than a cadence; this shows roughly the last six seconds, legibly.
+  const PX_PER_MS = 0.2;
+  const CAPACITY = 500;
+  const TICK_H = 13;
+
+  function createRail(canvas) {
+    const ctx = canvas.getContext('2d');
+    const times = [];
+    let w = 0, h = 0, ink = '#17171a', rule = '#e6e2d7';
+
+    function readColours() {
+      const st = getComputedStyle(document.documentElement);
+      ink = (st.getPropertyValue('--ink') || '#17171a').trim();
+      rule = (st.getPropertyValue('--rule') || '#e6e2d7').trim();
+    }
+
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      w = rect.width; h = rect.height;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      readColours();
+    }
+
+    function mark(nowMs) {
+      times.push(nowMs);
+      if (times.length > CAPACITY) times.shift();
+    }
+
+    function draw(nowMs, rhythm) {
+      // A canvas created while its section is display:none measures 0x0 and never
+      // paints. Re-measure whenever the layout width has moved out from under us.
+      if (!w || Math.abs(canvas.clientWidth - w) > 0.5) resize();
+      if (!w) return;
+      ctx.clearRect(0, 0, w, h);
+
+      const mid = Math.round(h / 2);
+      ctx.fillStyle = rule;
+      ctx.fillRect(0, mid, w, 1);
+
+      ctx.fillStyle = ink;
+      ctx.globalAlpha = 0.3 + 0.55 * (rhythm / 100);
+      const top = Math.round((h - TICK_H) / 2);
+      for (let i = times.length - 1; i >= 0; i--) {
+        const x = w - (nowMs - times[i]) * PX_PER_MS;
+        if (x < -2) break;
+        if (x > w) continue;
+        ctx.fillRect(Math.round(x), top, 1, TICK_H);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function reset() { times.length = 0; }
+
+    resize();
+    return { resize: resize, mark: mark, draw: draw, reset: reset };
+  }
+
+  const api = { createRail };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.cadence = Object.assign(root.cadence || {}, api);
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* src/render.js */
+(function (root) {
+  'use strict';
+
+  const WINDOW_BEHIND = 70;
+  const WINDOW_AHEAD = 110;
+  const SCROLL_K = 14;      // spring constants: scroll tracks tightly,
+  const CARET_K = 9;        // the caret lags a little, deliberately
+
+  function createRenderer(els) {
+    const st = {
+      charWidth: 0,
+      x: 0, caretX: 0,       // continuous floats, never character indices
+      spans: [], twins: [],
+      first: -1
+    };
+
+    function measure() {
+      const probe = document.createElement('span');
+      probe.textContent = 'mmmmmmmmmm';
+      probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;line-height:1';
+      const cs = getComputedStyle(els.line);
+      probe.style.font = cs.font;
+      probe.style.fontSize = cs.fontSize;
+      probe.style.fontFamily = cs.fontFamily;
+      probe.style.letterSpacing = cs.letterSpacing;
+      document.body.appendChild(probe);
+      st.charWidth = probe.getBoundingClientRect().width / 10;
+      probe.remove();
+      return st.charWidth;
+    }
+
+    function ensure(host, bank, count) {
+      while (bank.length < count) {
+        const sp = document.createElement('span');
+        host.appendChild(sp);
+        bank.push(sp);
+      }
+      for (let i = count; i < bank.length; i++) {
+        if (bank[i].textContent !== '') bank[i].textContent = '';
+      }
+    }
+
+    // draft B: which bar owns a character, and what state it is in. Bars ahead of
+    // the cursor get a rule too - the grouping you are about to type is the thing
+    // you are playing against, so leaving it invisible hides the mechanic.
+    function barClassFor(run, idx) {
+      if (!run.bars) return '';
+      for (let b = Math.max(0, run.barIndex - 6); b < run.bars.length; b++) {
+        const bar = run.bars[b];
+        if (idx < bar.start) break;
+        if (idx < bar.end) {
+          if (bar.state === 'locked') return ' bar-locked';
+          if (bar.state === 'loose') return ' bar-loose';
+          if (bar.state === 'dropped') return ' bar-missed';
+          return b === run.barIndex ? ' bar-active' : ' bar-ahead';
+        }
+      }
+      return '';
+    }
+
+    function draw(run, draft, dt) {
+      if (!st.charWidth) measure();
+      const cw = st.charWidth;
+
+      const first = Math.max(0, run.cursor - WINDOW_BEHIND);
+      const last = Math.min(run.text.length, run.cursor + WINDOW_AHEAD);
+      const count = last - first;
+
+      ensure(els.line, st.spans, count);
+      ensure(els.caretLine, st.twins, count);
+
+      const isC = run.draft === 'c';
+      const isB = run.draft === 'b';
+
+      for (let i = 0; i < count; i++) {
+        const idx = first + i;
+        const ch = run.text[idx];
+        const span = st.spans[i];
+        const twin = st.twins[i];
+
+        if (span.textContent !== ch) { span.textContent = ch; twin.textContent = ch; }
+
+        let cls = '';
+        let op = 1;
+
+        if (idx < run.cursor) {
+          const mark = run.marks[idx];
+          cls = mark === 'err' ? 'err' : mark === 'miss' ? 'miss' : 'done';
+          if (isB) cls += barClassFor(run, idx);
+        } else {
+          op = draft.inkAhead(run, idx - run.cursor);
+          if (isB) cls = barClassFor(run, idx).trim();
+        }
+
+        // draft C: the edge has consumed everything behind it
+        if (isC && idx < run.edge) { op = 0; cls = 'miss'; }
+
+        if (span.className !== cls) span.className = cls;
+        const o = op >= 1 ? '' : op.toFixed(3);
+        if (span.style.opacity !== o) span.style.opacity = o;
+      }
+
+      // springs - continuous float positions
+      const target = -(run.cursor - first) * cw;
+      st.x += (target - st.x) * (1 - Math.exp(-SCROLL_K * dt));
+      st.caretX += (target - st.caretX) * (1 - Math.exp(-CARET_K * dt));
+
+      els.line.style.transform = 'translate(' + st.x.toFixed(2) + 'px, -50%)';
+      els.caretLine.style.transform = 'translate(' + st.caretX.toFixed(2) + 'px, -50%)';
+      els.caret.style.transform = 'translateX(' + (st.caretX - target).toFixed(2) + 'px)';
+
+      st.first = first;
+      return { charWidth: cw, first: first, scrollX: st.x, caretOffset: st.caretX - target };
+    }
+
+    function reset() {
+      st.x = 0; st.caretX = 0; st.first = -1;
+      for (const sp of st.spans) { sp.textContent = ''; sp.className = ''; sp.style.opacity = ''; }
+      for (const sp of st.twins) sp.textContent = '';
+    }
+
+    return {
+      measure: measure, draw: draw, reset: reset,
+      get charWidth() { return st.charWidth; }
+    };
+  }
+
+  const api = { createRenderer };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.cadence = Object.assign(root.cadence || {}, api);
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* src/screens.js */
+(function (root) {
+  'use strict';
+
+  const req = (typeof require !== 'undefined' && typeof module !== 'undefined');
+  const g = req ? require('./generator.js') : root.cadence;
+
+  const KEY = 'cadence.v2';
+  const DRAFT_IDS = ['a', 'b', 'c'];
+
+  function blank() {
+    const r = { v: 2 };
+    for (const id of DRAFT_IDS) r[id] = { longest: null, highest: null };
+    return r;
+  }
+
+  function validRecord(r) {
+    return r && typeof r === 'object' && typeof r.ms === 'number' && typeof r.score === 'number';
+  }
+
+  function loadRecords() {
+    let raw = null;
+    try { raw = localStorage.getItem(KEY); } catch (e) { return blank(); }
+    if (!raw) return blank();
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch (e) { return blank(); }
+    const out = blank();
+    for (const id of DRAFT_IDS) {
+      const d = parsed && parsed[id];
+      if (d && validRecord(d.longest)) out[id].longest = d.longest;
+      if (d && validRecord(d.highest)) out[id].highest = d.highest;
+    }
+    return out;
+  }
+
+  function saveRecords(recs) {
+    try { localStorage.setItem(KEY, JSON.stringify(recs)); } catch (e) { /* ignore */ }
+  }
+
+  function summarise(run) {
+    return {
+      ms: typeof run.ms === 'number' ? run.ms : 0,
+      score: Math.round(run.score || 0),
+      wpm: Math.round(run.wpm || 0),
+      peak: Math.round(run.peakV || 0),
+      rhythm: Math.round(run.rhythm || 0),
+      chapterIndex: run.chapterIndex || 0,
+      accuracy: run.total ? (100 * run.correct / run.total) : 0
+    };
+  }
+
+  function recordRun(draftId, run) {
+    const s = summarise(run);
+    const recs = loadRecords();
+    const slot = recs[draftId];
+    const fell = {
+      longest: !slot.longest || s.ms > slot.longest.ms,
+      highest: !slot.highest || s.score > slot.highest.score
+    };
+    if (fell.longest) slot.longest = s;
+    if (fell.highest) slot.highest = s;
+    if (fell.longest || fell.highest) saveRecords(recs);
+    return fell;
+  }
+
+  function formatDuration(ms) {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    return Math.floor(total / 60) + ':' + String(total % 60).padStart(2, '0');
+  }
+
+  function scoreLine(draftId, draftName, run) {
+    const s = summarise(run);
+    return 'cadence ' + draftId + ' (' + draftName + ') · ' + formatDuration(s.ms) +
+      ' · ' + s.score.toLocaleString('en-US') + ' · ' + s.wpm + 'wpm · r' + s.rhythm +
+      ' · chapter ' + (s.chapterIndex + 1);
+  }
+
+  // rhythm as ink weight: the page remembers how you typed it, not just what
+  function inkTrace(run, count) {
+    const end = run.cursor;
+    const start = Math.max(0, end - count);
+    const out = [];
+    for (let i = start; i < end; i++) {
+      const r = run.rhythmAt[i] === undefined ? 50 : run.rhythmAt[i];
+      out.push({
+        ch: run.text[i],
+        opacity: 0.18 + 0.82 * Math.pow(r / 100, 1.9),
+        weight: r > 72 ? 500 : 400,
+        err: run.marks[i] === 'err',
+        miss: run.marks[i] === 'miss'
+      });
+    }
+    return out;
+  }
+
+  function renderPage(run, count) {
+    let html = '';
+    for (const c of inkTrace(run, count)) {
+      const colour = (c.err || c.miss) ? 'var(--red)' : 'var(--ink)';
+      const op = c.miss ? 0.2 : c.opacity;
+      html += '<span style="opacity:' + op.toFixed(3) + ';font-weight:' + c.weight +
+        ';color:' + colour + '">' + c.ch + '</span>';
+    }
+    return html;
+  }
+
+  const api = {
+    KEY, DRAFT_IDS, loadRecords, saveRecords, recordRun, summarise,
+    formatDuration, scoreLine, inkTrace, renderPage
+  };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.cadenceScreens = Object.assign(root.cadenceScreens || {}, api);
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+/* src/shell.js */
+(function (root) {
+  'use strict';
+
+  const c = root.cadence;
+  const S = root.cadenceScreens;
+
+  const DRAFTS = { a: c.draftA, b: c.draftB, c: c.draftC };
+  const ORDER = ['a', 'b', 'c'];
+  const CHAPTER_WORDS = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'];
+  const STRIKE_LABEL = { a: 'strikes', b: 'dropped', c: 'touches' };
+  // Draft C's pressure comes from behind, so its caret sits further right to leave
+  // room for the edge. A and B show the page ahead, so theirs sits left.
+  const CARET_X = { a: 0.34, b: 0.34, c: 0.62 };
+
+  const els = {};
+  const app = { draftId: 'a', run: null, renderer: null, rail: null, screen: 'title', last: 0 };
+
+  function grab() {
+    const ids = ['screen-title', 'screen-run', 'screen-result', 'draft-list',
+      'hud-score', 'hud-wpm', 'hud-demand', 'hud-rhythm', 'hud-chapter', 'hud-chapter-label',
+      'strikes', 'strike-label', 'stage', 'track', 'line', 'caret', 'caret-line',
+      'deadline', 'edge', 'branch-safe', 'branch-greedy', 'rail',
+      'bar-fill', 'bar-notch', 'result-sheet'];
+    for (const id of ids) els[id] = document.getElementById(id);
+  }
+
+  function show(name) {
+    app.screen = name;
+    for (const n of ['title', 'run', 'result']) {
+      els['screen-' + n].className = 'screen' + (n === name ? ' is-active' : '');
+    }
+  }
+
+  // ---------------- title ----------------
+
+  function renderTitle() {
+    const recs = S.loadRecords();
+    els['draft-list'].innerHTML = ORDER.map((id, i) => {
+      const D = DRAFTS[id];
+      const r = recs[id];
+      const best = r.highest
+        ? r.highest.score.toLocaleString('en-US') + ' <em>&middot; ' + S.formatDuration(r.longest.ms) + '</em>'
+        : '<em>—</em>';
+      return '<div class="draft-row' + (id === app.draftId ? ' sel' : '') + '" data-id="' + id + '">' +
+        '<span class="k">' + (i + 1) + '</span>' +
+        '<span class="n">' + D.META.name + '</span>' +
+        '<span class="d">' + D.META.blurb + '</span>' +
+        '<span class="b">' + best + '</span></div>';
+    }).join('');
+    for (const row of els['draft-list'].children) {
+      row.addEventListener('click', () => { app.draftId = row.dataset.id; renderTitle(); startRun(); });
+    }
+  }
+
+  // ---------------- run ----------------
+
+  function startRun() {
+    app.run = DRAFTS[app.draftId].createRun((Math.random() * 0x7fffffff) | 0);
+    app.renderer.reset();
+    app.rail.reset();
+    app.last = performance.now();
+    applyCaretX(app.draftId);
+    els['strike-label'].textContent = STRIKE_LABEL[app.draftId];
+    els['deadline'].style.display = app.draftId === 'b' ? 'block' : 'none';
+    els['edge'].style.display = app.draftId === 'c' ? 'block' : 'none';
+    const showBranch = app.draftId === 'c' ? 'block' : 'none';
+    els['branch-safe'].style.display = showBranch;
+    els['branch-greedy'].style.display = showBranch;
+    show('run');
+    app.rail.resize();            // the canvas is only measurable once visible
+    app.renderer.measure();
+  }
+
+  function finishRun() {
+    const run = app.run;
+    run.ms = c.elapsedMs(run);
+    run.wpm = run.ms ? (run.correct / 5) / (run.ms / 60000) : 0;
+    showResult(run);
+    show('result');
+  }
+
+  function caretScreenX() {
+    return els['stage'].getBoundingClientRect().width * CARET_X[app.draftId];
+  }
+
+  function applyCaretX(draftId) {
+    document.documentElement.style.setProperty('--caret-x', (CARET_X[draftId] * 100) + '%');
+  }
+
+  function drawOverlays(run, info, now) {
+    const cw = info.charWidth;
+    const baseX = caretScreenX() + info.caretOffset;
+
+    if (run.draft === 'b') {
+      const bar = run.bars[run.barIndex];
+      if (bar) {
+        const left = baseX + (bar.start - run.cursor) * cw;
+        const width = (bar.end - bar.start) * cw;
+        const remain = DRAFTS.b.barRemaining(run, now);
+        els['deadline'].style.left = left.toFixed(1) + 'px';
+        els['deadline'].style.width = Math.max(0, width).toFixed(1) + 'px';
+        els['deadline'].firstElementChild.style.width = (remain * 100).toFixed(1) + '%';
+      }
+    }
+
+    if (run.draft === 'c') {
+      const edgeX = baseX + (run.edge - run.cursor) * cw;
+      els['edge'].style.left = Math.max(-40, edgeX).toFixed(1) + 'px';
+
+      const b = run.branch;
+      if (b && b.committed === null) {
+        els['branch-safe'].style.left = baseX.toFixed(1) + 'px';
+        els['branch-greedy'].style.left = baseX.toFixed(1) + 'px';
+        els['branch-safe'].innerHTML = b.safeText + '<span class="tag">  &times;1</span>';
+        els['branch-greedy'].innerHTML = b.greedyText +
+          '<span class="tag">  &times;' + DRAFTS.c.TUNING.greedyPayout + '  edge faster</span>';
+        els['branch-safe'].style.opacity = '1';
+        els['branch-greedy'].style.opacity = '1';
+      } else {
+        els['branch-safe'].style.opacity = '0';
+        els['branch-greedy'].style.opacity = '0';
+      }
+    }
+  }
+
+  function updateHud(run) {
+    const D = DRAFTS[app.draftId];
+    els['hud-score'].textContent = Math.round(run.score).toLocaleString('en-US');
+    els['hud-wpm'].textContent = Math.round(run.v);
+    els['hud-demand'].textContent = Math.round(run.demand.value);
+    els['hud-rhythm'].textContent = Math.round(run.rhythm);
+
+    const ch = c.CHAPTERS[run.chapterIndex];
+    els['hud-chapter'].textContent = ch.name;
+    els['hud-chapter-label'].textContent = 'chapter ' + CHAPTER_WORDS[run.chapterIndex];
+
+    const spent = D.strikesOf(run);
+    const marks = els['strikes'].children;
+    for (let i = 0; i < marks.length; i++) {
+      const cls = i < spent ? 'spent' : '';
+      if (marks[i].className !== cls) marks[i].className = cls;
+    }
+
+    const scale = 220;
+    els['bar-fill'].style.width = Math.min(100, (run.v / scale) * 100).toFixed(1) + '%';
+    els['bar-notch'].style.left = Math.min(100, (run.demand.value / scale) * 100).toFixed(1) + '%';
+  }
+
+  function frame(now) {
+    requestAnimationFrame(frame);
+    const dt = Math.min(0.05, (now - app.last) / 1000);
+    app.last = now;
+    if (app.screen !== 'run' || !app.run) return;
+
+    const D = DRAFTS[app.draftId];
+    D.tick(app.run, now, dt);
+    const info = app.renderer.draw(app.run, D, dt);
+    drawOverlays(app.run, info, now);
+    app.rail.draw(now, app.run.rhythm);
+    updateHud(app.run);
+
+    if (app.run.ended) finishRun();
+  }
+
+  // ---------------- result ----------------
+
+  function showResult(run) {
+    const D = DRAFTS[app.draftId];
+    const s = S.summarise(run);
+    const fell = S.recordRun(app.draftId, run);
+    const chapter = c.CHAPTERS[s.chapterIndex];
+
+    const extra = run.draft === 'b'
+      ? stat('locked', run.locked) + stat('loose', run.loose)
+      : run.draft === 'c'
+        ? stat('safe', run.safeTaken) + stat('greedy', run.greedyTaken)
+        : stat('best combo', run.maxCombo);
+
+    els['result-sheet'].innerHTML =
+      '<div class="wordmark">' + D.META.name + '<s> &middot; ' + D.endLabel(run) + '</s></div>' +
+      '<div class="big">' + S.formatDuration(s.ms) + '</div>' +
+      '<div class="sub">' + s.score.toLocaleString('en-US') + '</div>' +
+      (fell.longest || fell.highest ? '<div class="flag">new record</div>' : '') +
+      '<div class="stats">' +
+        stat('wpm', s.wpm) + stat('peak', s.peak) +
+        stat('rhythm', s.rhythm, '%') + stat('accuracy', s.accuracy.toFixed(1), '%') +
+        extra + stat('reached', chapter.name) +
+      '</div>' +
+      '<div id="page-print">' + S.renderPage(run, 260) + '</div>' +
+      '<div class="hint"><span><b>tab</b> again</span><span><b>c</b> copy</span>' +
+      '<span><b>esc</b> drafts</span></div>';
+
+    function stat(k, v, unit) {
+      return '<div><i class="label">' + k + '</i><div class="v">' + v +
+        (unit ? '<s>' + unit + '</s>' : '') + '</div></div>';
+    }
+  }
+
+  // ---------------- input ----------------
+
+  function isTypingKey(e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return false;
+    return e.key === ' ' || /^[a-z]$/.test(e.key);
+  }
+
+  function onKeyDown(e) {
+    const now = performance.now();              // timestamp before any other work
+
+    if (e.key === 'Tab') { e.preventDefault(); startRun(); return; }
+    if (e.key === 'Escape') { renderTitle(); show('title'); return; }
+
+    if (app.screen !== 'run' && /^[123]$/.test(e.key)) {
+      app.draftId = ORDER[Number(e.key) - 1];
+      renderTitle();
+      if (app.screen === 'result') show('title');
+      return;
+    }
+
+    if (app.screen === 'result' && (e.key === 'c' || e.key === 'C')) {
+      const line = S.scoreLine(app.draftId, DRAFTS[app.draftId].META.name, app.run);
+      if (navigator.clipboard) navigator.clipboard.writeText(line).catch(() => {});
+      return;
+    }
+
+    if (e.key === ' ') e.preventDefault();
+    if (!isTypingKey(e)) return;
+
+    if (app.screen !== 'run') { startRun(); app.last = now; }
+
+    const res = DRAFTS[app.draftId].onKey(app.run, e.key, now);
+    app.rail.mark(now);
+    if (res.ended) finishRun();
+  }
+
+  function boot() {
+    grab();
+    app.renderer = c.createRenderer({
+      line: els['line'], caret: els['caret'], caretLine: els['caret-line'], track: els['track']
+    });
+    app.rail = c.createRail(els['rail']);
+
+    const remeasure = () => { app.renderer.measure(); app.rail.resize(); };
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(remeasure);
+    window.addEventListener('resize', remeasure);
+    window.addEventListener('keydown', onKeyDown);
+
+    renderTitle();
+    show('title');
+    requestAnimationFrame(frame);
+  }
+
+  // Replays a scripted run with synthetic timestamps and renders a single frame.
+  // Deterministic: it never waits on rAF or setTimeout, both of which a browser
+  // throttles hard in a background tab. Used to preview a draft at a chosen point
+  // in its difficulty curve, and to verify rendering without racing the clock.
+  function replay(draftId, opts) {
+    const o = Object.assign({ keys: 120, msPerKey: 70, jitter: 0, errorEvery: 0, seed: 1 }, opts || {});
+    const D = DRAFTS[draftId];
+    app.draftId = draftId;
+    app.screen = 'replay';                     // keeps frame() from clobbering us
+    app.run = D.createRun(o.seed);
+    app.renderer.reset();
+    app.rail.reset();
+
+    applyCaretX(draftId);
+    els['strike-label'].textContent = STRIKE_LABEL[draftId];
+    els['deadline'].style.display = draftId === 'b' ? 'block' : 'none';
+    els['edge'].style.display = draftId === 'c' ? 'block' : 'none';
+    const vis = draftId === 'c' ? 'block' : 'none';
+    els['branch-safe'].style.display = vis;
+    els['branch-greedy'].style.display = vis;
+    show('run');                  // before any drawing: a hidden canvas measures 0
+    app.rail.resize();
+    app.renderer.measure();
+
+    let now = 1000;
+    let seed = o.seed;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+
+    for (let i = 0; i < o.keys && !app.run.ended; i++) {
+      const run = app.run;
+      let ch;
+      if (draftId === 'c' && run.branch && run.branch.committed === null) {
+        ch = (o.greedy ? run.branch.greedyText : run.branch.safeText)[0];
+      } else {
+        ch = run.text[run.cursor];
+      }
+      if (ch === undefined) ch = ' ';
+      const wrong = o.errorEvery && i > 0 && i % o.errorEvery === 0;
+      D.onKey(run, wrong ? (ch === 'q' ? 'z' : 'q') : ch, now);
+      app.rail.mark(now);
+      const step = o.msPerKey * (1 + (rnd() * 2 - 1) * o.jitter);
+      // advance the world in frame-sized slices so springs and demand settle
+      for (let acc = 0; acc < step; acc += 16) {
+        const slice = Math.min(16, step - acc) / 1000;
+        D.tick(run, now + acc, slice);
+        app.renderer.draw(run, D, slice);
+      }
+      now += step;
+    }
+
+    const run = app.run;
+    const info = app.renderer.draw(run, D, 1 / 60);
+    drawOverlays(run, info, now);
+    app.rail.draw(now, run.rhythm);
+    updateHud(run);
+    app.screen = 'replay';
+
+    return {
+      draft: draftId, cursor: run.cursor, score: Math.round(run.score),
+      wpm: Math.round(run.v), demand: +run.demand.value.toFixed(1),
+      ratio: +run.ratio.toFixed(2), rhythm: run.rhythm,
+      strikes: D.strikesOf(run), ended: run.ended, reason: run.endReason,
+      chapter: c.CHAPTERS[run.chapterIndex].name,
+      caretOffsetPx: +info.caretOffset.toFixed(1), charWidth: +info.charWidth.toFixed(2)
+    };
+  }
+
+  root.cadenceApp = { app: app, els: els, startRun: startRun, finishRun: finishRun,
+    boot: boot, DRAFTS: DRAFTS, replay: replay, show: show, renderTitle: renderTitle };
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+</body>
+</html>

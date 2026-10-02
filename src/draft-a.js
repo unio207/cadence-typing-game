@@ -37,7 +37,7 @@
       text: '', cursor: 0, marks: [], rhythmAt: [],
       combo: 0, maxCombo: 0, score: 0, strikes: 0, correct: 0, total: 0,
       v: 0, peakV: 0, ratio: 1, rhythm: 50, chapterIndex: 0,
-      startedAt: null, lastKeyAt: null, intervals: [], blindSince: null,
+      startedAt: null, lastKeyAt: null, nowMs: 0, intervals: [], blindSince: null,
       ended: false, endReason: null,
       demand: s.createDemand(), speed: m.createSpeed(), wpmTrace: []
     };
@@ -50,6 +50,7 @@
   function onKey(run, key, nowMs) {
     if (run.ended) return { correct: false, wasBlind: false, strike: false, ended: true };
     if (run.startedAt === null) run.startedAt = nowMs;
+    run.nowMs = nowMs;
 
     const wasBlind = s.isBlind(run.ratio);
     const correct = key === run.text[run.cursor];
@@ -92,6 +93,7 @@
 
   function tick(run, nowMs, dtSeconds) {
     if (run.ended || run.startedAt === null) return;
+    run.nowMs = nowMs;
 
     run.v = m.wpmAt(run.speed, nowMs);
 

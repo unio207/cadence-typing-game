@@ -14,6 +14,13 @@
 
   const MAX_TOUCHES = 3;
   const START_LEAD = 26;      // characters of head start
+  // The edge must stay on screen to be a threat. Outpacing the demand let the gap
+  // grow without bound - it reached 116 characters in testing, pushing the edge
+  // off the left of the stage entirely, so the pressure simply vanished for any
+  // competent player. Capping it also keeps the junction a real decision: a greedy
+  // segment costs ~7 characters of ground, so the cap is about six of them.
+  // 40 also fits on screen behind draft C's caret, which sits at 62% for this reason.
+  const MAX_GAP = 40;
   const REPRIEVE = 16;        // characters the edge is pushed back when it catches you
   // Tunable so tools/balance.js can sweep them. The target these were chosen
   // against: an adaptive player (take the hard line only when the gap is big)
@@ -88,7 +95,7 @@
       edge: -START_LEAD, touches: 0, closestGap: Infinity,
       combo: 0, maxCombo: 0, score: 0, correct: 0, total: 0,
       v: 0, peakV: 0, ratio: 1, rhythm: 50, chapterIndex: 0,
-      startedAt: null, lastKeyAt: null, intervals: [],
+      startedAt: null, lastKeyAt: null, nowMs: 0, intervals: [],
       ended: false, endReason: null,
       demand: s.createDemand(), speed: m.createSpeed(), wpmTrace: []
     };
@@ -101,6 +108,7 @@
   function onKey(run, key, nowMs) {
     if (run.ended) return { correct: false, ended: true, chose: null };
     if (run.startedAt === null) run.startedAt = nowMs;
+    run.nowMs = nowMs;
 
     let chose = null;
     let correct;
@@ -147,6 +155,7 @@
 
   function tick(run, nowMs, dtSeconds) {
     if (run.ended || run.startedAt === null) return;
+    run.nowMs = nowMs;
 
     run.v = m.wpmAt(run.speed, nowMs);
 
@@ -170,6 +179,8 @@
     if (idle) edgeRate *= EDGE_IDLE_MULT;
     run.edge += edgeRate * dtSeconds;
 
+    if (run.cursor - run.edge > MAX_GAP) run.edge = run.cursor - MAX_GAP;
+
     const gap = run.cursor - run.edge;
     if (gap < run.closestGap) run.closestGap = gap;
     if (gap <= 0) {
@@ -189,7 +200,7 @@
   const api = {
     draftC: {
       META, createRun, onKey, tick, inkAhead, endLabel, gapOf,
-      MAX_TOUCHES, START_LEAD, TUNING, EDGE_IDLE_MULT,
+      MAX_TOUCHES, START_LEAD, MAX_GAP, TUNING, EDGE_IDLE_MULT,
       strikesOf: run => run.touches, maxStrikes: () => MAX_TOUCHES
     }
   };

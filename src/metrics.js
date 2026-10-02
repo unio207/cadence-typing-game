@@ -69,6 +69,14 @@
     return (n / 5) * (60000 / windowMs);
   }
 
+  // Elapsed time on the engine's own clock. Reading performance.now() instead
+  // means the duration is measured on a different clock from the one the run was
+  // driven with, which reports nonsense for any replayed or stepped run.
+  function elapsedMs(run) {
+    if (run.startedAt === null) return 0;
+    return Math.max(0, (run.nowMs || run.startedAt) - run.startedAt);
+  }
+
   function pointsFor(v, rhythm, combo) {
     const speedMult = clamp(v / 60, 0.5, 3.0);
     const rhythmMult = 0.6 + 0.9 * (rhythm / 100);
@@ -77,7 +85,7 @@
   }
 
   const api = {
-    clamp, median, rhythmOf, createSpeed, pushKey, wpmAt, pointsFor, isWarm, WARM_KEYS,
+    clamp, median, rhythmOf, createSpeed, pushKey, wpmAt, pointsFor, isWarm, WARM_KEYS, elapsedMs,
     RHYTHM_WINDOW, INTERVAL_CLAMP_MS, SPEED_WINDOW_MS
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

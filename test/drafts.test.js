@@ -205,3 +205,28 @@ test('draft C: the edge catching you three times ends the run', () => {
   assert.equal(r.run.endReason, 'caught');
   assert.equal(r.run.touches, 3);
 });
+
+// --- elapsed time comes from the engine clock, not the wall clock ------------
+
+for (const id of IDS) {
+  test('draft ' + id + ': elapsed time is measured on the clock the run was driven with', () => {
+    // Regression test. finishRun() used performance.now() while the engine ran on
+    // whatever timestamps it was handed, so a stepped or replayed run reported a
+    // duration from a different clock entirely - 0:05 and 1548 wpm in testing.
+    const D = DRAFTS[id];
+    const { elapsedMs } = require('../src/metrics.js');
+    const run = D.createRun(3);
+    assert.equal(elapsedMs(run), 0, 'a run that has not started must read zero');
+
+    const start = 500000;                     // deliberately not near performance.now()
+    let now = start;
+    for (let i = 0; i < 120 && !run.ended; i++) {
+      D.onKey(run, run.text[run.cursor], now);
+      D.tick(run, now, 0.08);
+      now += 80;
+    }
+    const expected = now - 80 - start;
+    assert.ok(Math.abs(elapsedMs(run) - expected) < 100,
+      'elapsed was ' + elapsedMs(run) + ', expected about ' + expected);
+  });
+}

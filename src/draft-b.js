@@ -60,7 +60,7 @@
       locked: 0, loose: 0, dropped: 0, idleDrops: 0,
       combo: 0, maxCombo: 0, score: 0, correct: 0, total: 0,
       v: 0, peakV: 0, ratio: 1, rhythm: 50, chapterIndex: 0,
-      startedAt: null, lastKeyAt: null, intervals: [],
+      startedAt: null, lastKeyAt: null, nowMs: 0, intervals: [],
       ended: false, endReason: null,
       demand: s.createDemand(), speed: m.createSpeed(), wpmTrace: []
     };
@@ -92,6 +92,7 @@
   function onKey(run, key, nowMs) {
     if (run.ended) return { correct: false, ended: true, closed: null };
     if (run.startedAt === null) { run.startedAt = nowMs; activate(run, nowMs); }
+    run.nowMs = nowMs;
 
     const bar = run.bars[run.barIndex];
     const correct = key === run.text[run.cursor];
@@ -137,6 +138,7 @@
 
   function tick(run, nowMs, dtSeconds) {
     if (run.ended || run.startedAt === null) return;
+    run.nowMs = nowMs;
 
     run.v = m.wpmAt(run.speed, nowMs);
 
