@@ -1,9 +1,18 @@
-# cadence — design
+# cadence — design (draft A, "drying ink")
 
-A locally-played typing game for fast typists. One `index.html`, no build step, no
-server, no audio. Double-click to play.
+A locally-played typing game for fast typists. No build step, no server, no audio.
 
 Date: 2026-10-01
+
+> **This spec describes draft A only.** Two further drafts were built over the same
+> engine and are specified in `2026-10-02-drafts-b-and-c.md`. Where the two documents
+> disagree, the second is newer. Sections 5–7 and 9 (visual system, motion, engine,
+> content) are shared by all three drafts; sections 1, 3, 4 and 8 are draft A's own.
+>
+> Implementation note: the shipped build is `index.html` plus `src/*.js` classic
+> scripts, with `node tools/bundle.js` producing a single-file `cadence.html`. §12's
+> "one `index.html`" was relaxed so the pure logic could be unit-tested without a
+> bundler.
 
 ## 1. Premise
 
