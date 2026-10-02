@@ -39,22 +39,34 @@
     return Math.round(100 * (1 - clamp(cv / CV_AT_ZERO, 0, 1)));
   }
 
+  const WARM_KEYS = 10;        // keystrokes before rolling wpm means anything
+
   function createSpeed() { return { times: [] }; }
+
+  function isWarm(speed) { return speed.times.length >= WARM_KEYS; }
 
   function pushKey(speed, nowMs) {
     speed.times.push(nowMs);
     if (speed.times.length > 512) speed.times.splice(0, speed.times.length - 512);
   }
 
+  // Divides by the window that has actually elapsed, not the nominal 3s. A fixed
+  // 3s denominator reads ~4 wpm at the second keystroke of a run however fast you
+  // are typing - it is counting characters you have not had time to type yet -
+  // which made the opening second of every run unwinnable in draft A.
   function wpmAt(speed, nowMs) {
+    const times = speed.times;
+    if (times.length === 0) return 0;
     const cutoff = nowMs - SPEED_WINDOW_MS;
-    let n = 0;
-    for (let i = speed.times.length - 1; i >= 0; i--) {
-      if (speed.times[i] < cutoff) break;
+    let n = 0, oldest = times[times.length - 1];
+    for (let i = times.length - 1; i >= 0; i--) {
+      if (times[i] < cutoff) break;
       n++;
+      oldest = times[i];
     }
     if (n === 0) return 0;
-    return (n / 5) * (60000 / SPEED_WINDOW_MS);
+    const windowMs = Math.max(600, Math.min(SPEED_WINDOW_MS, nowMs - oldest));
+    return (n / 5) * (60000 / windowMs);
   }
 
   function pointsFor(v, rhythm, combo) {
@@ -65,7 +77,7 @@
   }
 
   const api = {
-    clamp, median, rhythmOf, createSpeed, pushKey, wpmAt, pointsFor,
+    clamp, median, rhythmOf, createSpeed, pushKey, wpmAt, pointsFor, isWarm, WARM_KEYS,
     RHYTHM_WINDOW, INTERVAL_CLAMP_MS, SPEED_WINDOW_MS
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
