@@ -5,10 +5,9 @@ const { makeRng } = require('../src/generator.js');
 
 const DRAFTS = {
   a: require('../src/draft-a.js'),
-  b: require('../src/draft-b.js'),
   c: require('../src/draft-c.js')
 };
-const IDS = ['a', 'b', 'c'];
+const IDS = ['a', 'c'];
 
 // Play a draft with a difficulty-aware typist that errs more when it cannot read.
 function play(id, opts) {
@@ -138,40 +137,6 @@ test('draft A: the page never fades the newest characters', () => {
     run.ratio = ratio;
     assert.equal(A.inkAhead(run, 40), 1, 'faded the window edge at ratio ' + ratio);
   }
-});
-
-// --- draft B specifics ------------------------------------------------------
-
-test('draft B: clean and in-rhythm bars lock, sloppy ones only go loose', () => {
-  const B = DRAFTS.b;
-  const tight = play('b', { wpm: 150, jitter: 0.04, maxSecs: 60 });
-  const ragged = play('b', { wpm: 150, jitter: 0.70, maxSecs: 60 });
-  assert.ok(tight.run.locked > 0, 'a metronomic player locked nothing');
-  assert.ok(tight.run.locked > ragged.run.locked,
-    'tight locked ' + tight.run.locked + ', ragged locked ' + ragged.run.locked);
-});
-
-test('draft B: a brief hesitation is survivable but a long one is not', () => {
-  const B = DRAFTS.b;
-  const run = B.createRun(7);
-  let now = 1000;
-  for (let i = 0; i < 60; i++) { B.onKey(run, run.text[run.cursor], now); B.tick(run, now, 0.06); now += 60; }
-  const before = run.dropped;
-  for (let i = 0; i < 40; i++) { now += 30; B.tick(run, now, 0.03); }      // 1.2s
-  assert.equal(run.dropped, before, 'a 1.2s hesitation dropped a bar');
-  assert.equal(run.ended, false);
-});
-
-test('draft B: a dropped bar is skipped rather than blocking the cursor', () => {
-  const B = DRAFTS.b;
-  const run = B.createRun(7);
-  let now = 1000;
-  B.onKey(run, run.text[0], now);
-  const cursorBefore = run.cursor;
-  for (let i = 0; i < 200 && run.dropped === 0; i++) { now += 20; B.tick(run, now, 0.02); }
-  assert.equal(run.dropped, 1);
-  assert.ok(run.cursor > cursorBefore, 'cursor did not skip past the dropped bar');
-  assert.equal(run.marks[cursorBefore], 'miss');
 });
 
 // --- draft C specifics ------------------------------------------------------

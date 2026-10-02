@@ -8,7 +8,6 @@ const { makeRng } = require('../src/generator.js');
 
 const DRAFTS = {
   a: require('../src/draft-a.js'),
-  b: require('../src/draft-b.js'),
   c: require('../src/draft-c.js')
 };
 
@@ -62,11 +61,9 @@ function play(draft, profile, seed, strategy, maxSecs) {
     secs: (now - 1000) / 1000,
     score: Math.round(run.score),
     reason: run.endReason || 'survived',
-    extra: draft === 'b'
-      ? 'locked ' + run.locked + ' loose ' + run.loose + ' dropped ' + run.dropped
-      : draft === 'c'
-        ? 'safe ' + run.safeTaken + ' greedy ' + run.greedyTaken + ' touches ' + run.touches
-        : 'strikes ' + run.strikes + ' combo ' + run.maxCombo
+    extra: draft === 'c'
+      ? 'safe ' + run.safeTaken + ' greedy ' + run.greedyTaken + ' touches ' + run.touches
+      : 'strikes ' + run.strikes + ' combo ' + run.maxCombo
   };
 }
 
@@ -93,5 +90,4 @@ function report(draft, strategy) {
 
 const which = process.argv[2];
 if (!which || which === 'a') report('a');
-if (!which || which === 'b') report('b');
 if (!which || which === 'c') { report('c', 'safe'); report('c', 'greedy'); report('c', 'adaptive'); }

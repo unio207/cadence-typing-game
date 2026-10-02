@@ -40,24 +40,6 @@
       }
     }
 
-    // draft B: which bar owns a character, and what state it is in. Bars ahead of
-    // the cursor get a rule too - the grouping you are about to type is the thing
-    // you are playing against, so leaving it invisible hides the mechanic.
-    function barClassFor(run, idx) {
-      if (!run.bars) return '';
-      for (let b = Math.max(0, run.barIndex - 6); b < run.bars.length; b++) {
-        const bar = run.bars[b];
-        if (idx < bar.start) break;
-        if (idx < bar.end) {
-          if (bar.state === 'locked') return ' bar-locked';
-          if (bar.state === 'loose') return ' bar-loose';
-          if (bar.state === 'dropped') return ' bar-missed';
-          return b === run.barIndex ? ' bar-active' : ' bar-ahead';
-        }
-      }
-      return '';
-    }
-
     function draw(run, draft, dt) {
       if (!st.charWidth) measure();
       const cw = st.charWidth;
@@ -70,7 +52,6 @@
       ensure(els.caretLine, st.twins, count);
 
       const isC = run.draft === 'c';
-      const isB = run.draft === 'b';
 
       for (let i = 0; i < count; i++) {
         const idx = first + i;
@@ -86,10 +67,8 @@
         if (idx < run.cursor) {
           const mark = run.marks[idx];
           cls = mark === 'err' ? 'err' : mark === 'miss' ? 'miss' : 'done';
-          if (isB) cls += barClassFor(run, idx);
         } else {
           op = draft.inkAhead(run, idx - run.cursor);
-          if (isB) cls = barClassFor(run, idx).trim();
         }
 
         // draft C: the edge has consumed everything behind it

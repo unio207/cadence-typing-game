@@ -46,7 +46,6 @@ const { createRenderer } = require('../src/render.js');
 const { createRail } = require('../src/rail.js');
 const DRAFTS = {
   a: require('../src/draft-a.js'),
-  b: require('../src/draft-b.js'),
   c: require('../src/draft-c.js')
 };
 
@@ -63,7 +62,7 @@ test('measure derives a sane character width', () => {
   assert.equal(h.r.measure(), CHAR_W);
 });
 
-for (const id of ['a', 'b', 'c']) {
+for (const id of ['a', 'c']) {
   test('draft ' + id + ': the renderer produces finite geometry and valid opacity', () => {
     const D = DRAFTS[id];
     const h = harness();
@@ -110,17 +109,6 @@ for (const id of ['a', 'b', 'c']) {
     assert.ok(settled <= 181, 'window larger than the 180-character design: ' + settled);
   });
 }
-
-test('draft B marks bar state onto the characters', () => {
-  const B = DRAFTS.b;
-  const h = harness();
-  const run = B.createRun(5);
-  let now = 1000;
-  for (let i = 0; i < 90; i++) { B.onKey(run, run.text[run.cursor], now); B.tick(run, now, 1 / 60); now += 60; }
-  h.r.draw(run, B, 1 / 60);
-  const classes = h.els.line.children.map(s => s.className).join(' ');
-  assert.ok(/bar-locked|bar-loose/.test(classes), 'no bar underline classes were applied: ' + classes);
-});
 
 test('draft C blanks everything the edge has consumed', () => {
   const C = DRAFTS.c;

@@ -4,13 +4,13 @@
   const c = root.cadence;
   const S = root.cadenceScreens;
 
-  const DRAFTS = { a: c.draftA, b: c.draftB, c: c.draftC };
-  const ORDER = ['a', 'b', 'c'];
+  const DRAFTS = { a: c.draftA, c: c.draftC };
+  const ORDER = ['a', 'c'];
   const CHAPTER_WORDS = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'];
-  const STRIKE_LABEL = { a: 'strikes', b: 'dropped', c: 'touches' };
+  const STRIKE_LABEL = { a: 'strikes', c: 'touches' };
   // Draft C's pressure comes from behind, so its caret sits further right to leave
   // room for the edge. A and B show the page ahead, so theirs sits left.
-  const CARET_X = { a: 0.34, b: 0.34, c: 0.62 };
+  const CARET_X = { a: 0.34, c: 0.62 };
 
   const els = {};
   const app = { draftId: 'a', run: null, renderer: null, rail: null, screen: 'title', last: 0 };
@@ -19,7 +19,7 @@
     const ids = ['screen-title', 'screen-run', 'screen-result', 'draft-list',
       'hud-score', 'hud-wpm', 'hud-demand', 'hud-rhythm', 'hud-chapter', 'hud-chapter-label',
       'strikes', 'strike-label', 'stage', 'track', 'line', 'caret', 'caret-line',
-      'deadline', 'edge', 'branch-safe', 'branch-greedy', 'rail',
+      'edge', 'branch-safe', 'branch-greedy', 'rail',
       'bar-fill', 'bar-notch', 'result-sheet'];
     for (const id of ids) els[id] = document.getElementById(id);
   }
@@ -61,7 +61,6 @@
     app.last = performance.now();
     applyCaretX(app.draftId);
     els['strike-label'].textContent = STRIKE_LABEL[app.draftId];
-    els['deadline'].style.display = app.draftId === 'b' ? 'block' : 'none';
     els['edge'].style.display = app.draftId === 'c' ? 'block' : 'none';
     const showBranch = app.draftId === 'c' ? 'block' : 'none';
     els['branch-safe'].style.display = showBranch;
@@ -91,17 +90,6 @@
     const cw = info.charWidth;
     const baseX = caretScreenX() + info.caretOffset;
 
-    if (run.draft === 'b') {
-      const bar = run.bars[run.barIndex];
-      if (bar) {
-        const left = baseX + (bar.start - run.cursor) * cw;
-        const width = (bar.end - bar.start) * cw;
-        const remain = DRAFTS.b.barRemaining(run, now);
-        els['deadline'].style.left = left.toFixed(1) + 'px';
-        els['deadline'].style.width = Math.max(0, width).toFixed(1) + 'px';
-        els['deadline'].firstElementChild.style.width = (remain * 100).toFixed(1) + '%';
-      }
-    }
 
     if (run.draft === 'c') {
       const edgeX = baseX + (run.edge - run.cursor) * cw;
@@ -170,11 +158,9 @@
     const fell = S.recordRun(app.draftId, run);
     const chapter = c.CHAPTERS[s.chapterIndex];
 
-    const extra = run.draft === 'b'
-      ? stat('locked', run.locked) + stat('loose', run.loose)
-      : run.draft === 'c'
-        ? stat('safe', run.safeTaken) + stat('greedy', run.greedyTaken)
-        : stat('best combo', run.maxCombo);
+    const extra = run.draft === 'c'
+      ? stat('safe', run.safeTaken) + stat('greedy', run.greedyTaken)
+      : stat('best combo', run.maxCombo);
 
     els['result-sheet'].innerHTML =
       '<div class="wordmark">' + D.META.name + '<s> &middot; ' + D.endLabel(run) + '</s></div>' +
@@ -209,7 +195,7 @@
     if (e.key === 'Tab') { e.preventDefault(); startRun(); return; }
     if (e.key === 'Escape') { renderTitle(); show('title'); return; }
 
-    if (app.screen !== 'run' && /^[123]$/.test(e.key)) {
+    if (app.screen !== 'run' && /^[12]$/.test(e.key)) {
       app.draftId = ORDER[Number(e.key) - 1];
       renderTitle();
       if (app.screen === 'result') show('title');
@@ -264,7 +250,6 @@
 
     applyCaretX(draftId);
     els['strike-label'].textContent = STRIKE_LABEL[draftId];
-    els['deadline'].style.display = draftId === 'b' ? 'block' : 'none';
     els['edge'].style.display = draftId === 'c' ? 'block' : 'none';
     const vis = draftId === 'c' ? 'block' : 'none';
     els['branch-safe'].style.display = vis;
