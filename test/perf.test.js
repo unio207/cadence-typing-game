@@ -47,7 +47,7 @@ const TEXT_WRITES_PER_CHAR = 3;
 const WORST_FRAME_RATIO = 3;
 const WORST_FRAME_FLOOR = 40;   // never fail on tiny means
 
-for (const id of ['a', 'c']) {
+for (const id of ['a']) {
   test('draft ' + id + ': the renderer does not slide the whole span window per character', () => {
     const res = profile(id, SECONDS, WPM);
     let text = 0, frames = 0;

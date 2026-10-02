@@ -5,7 +5,7 @@
   const g = req ? require('./generator.js') : root.cadence;
 
   const KEY = 'cadence.v2';
-  const DRAFT_IDS = ['a', 'c'];
+  const DRAFT_IDS = ['a'];
 
   function blank() {
     const r = { v: 2 };

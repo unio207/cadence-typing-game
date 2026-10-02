@@ -8,10 +8,7 @@ const { makeRng, createGenerator, chapterAt } = require('../src/generator.js');
 const { isBlind } = require('../src/survival.js');
 const { isWarm } = require('../src/metrics.js');
 
-const DRAFTS = {
-  a: require('../src/draft-a.js'),
-  c: require('../src/draft-c.js')
-};
+const DRAFTS = { a: require('../src/draft-a.js') };
 
 const PROFILES = [
   { label: 'metronome 200', wpm: 200, jitter: 0.00 },
@@ -179,4 +176,3 @@ function reportA() {
 
 const which = process.argv[2];
 if (!which || which === 'a') reportA();
-if (!which || which === 'c') { report('c', 'safe'); report('c', 'greedy'); report('c', 'adaptive'); }

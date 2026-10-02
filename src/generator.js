@@ -128,15 +128,6 @@
     return Math.min(size - 1, Math.floor(size * Math.pow(rng(), RANK_EXP)));
   }
 
-  // the greedy branch in draft C: denser, longer, worse transitions
-  let GREEDY_CACHE = null;
-  function greedyPool() {
-    if (!GREEDY_CACHE) {
-      GREEDY_CACHE = WORDS.map(tagWord)
-        .filter(t => t.len >= 5 && (t.sameFingerPairs > 0 || t.maxSameHandRun >= 3 || t.len >= 7));
-    }
-    return GREEDY_CACHE;
-  }
 
   function createGenerator(seed) {
     const rng = makeRng(seed);
@@ -169,52 +160,13 @@
       return out;
     }
 
-    // draft B: three-word bars
-    function phrases(chapterIndex, n, perPhrase) {
-      const size = perPhrase || 3;
-      const out = [];
-      for (let i = 0; i < n; i++) out.push(words(chapterIndex, size));
-      return out;
-    }
 
-    // draft C: two valid lines that diverge on the first character and
-    // reconverge afterwards. the greedy line is longer and denser.
-    function branchPair(chapterIndex) {
-      const safe = words(chapterIndex, 3);
-      let greedy = null;
-      for (let attempt = 0; attempt < 40; attempt++) {
-        const cand = words(chapterIndex === 7 ? 7 : 5, 1)[0];
-        const pool = greedyPool();
-        const extra = pool[Math.floor(rng() * pool.length)];
-        const first = cand[0];
-        if (first !== safe[0][0]) {
-          greedy = [cand, extra ? extra.word : cand, words(chapterIndex, 1)[0]];
-          break;
-        }
-      }
-      if (!greedy) {
-        // guaranteed fallback: take any greedy word whose first letter differs
-        const pool = greedyPool().filter(t => t.word[0] !== safe[0][0]);
-        const a = pool[Math.floor(rng() * pool.length)];
-        const b = pool[Math.floor(rng() * pool.length)];
-        greedy = [a.word, b.word, words(chapterIndex, 1)[0]];
-      }
-      const safeLen = safe.join(' ').length;
-      const greedyLen = greedy.join(' ').length;
-      return {
-        safe: safe,
-        greedy: greedy,
-        payout: 1.6,
-        safeLen: safeLen,
-        greedyLen: greedyLen
-      };
-    }
 
-    return { recent: recent, words: words, phrases: phrases, branchPair: branchPair };
+    return { recent: recent, words: words };
   }
 
   const api = {
-    CHAPTERS, chapterAt, makeRng, createGenerator, rejects, hasRoll, poolFor, greedyPool,
+    CHAPTERS, chapterAt, makeRng, createGenerator, rejects, hasRoll, poolFor,
     easeOf, sampleIndex, RANK_EXP, NO_REPEAT_WINDOW
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

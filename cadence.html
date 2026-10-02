@@ -119,18 +119,8 @@
   #caret-line { left: 0; color: var(--paper); transform: translateY(-50%); }
 
 
-  /* the edge - draft C */
-  #edge { position: absolute; top: 38px; width: 1px; height: 74px; background: var(--red); display: none; }
-  #edge::after { content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 64px;
-    background: linear-gradient(90deg, var(--paper), transparent); }
 
-  /* branch lines - draft C */
-  .branch { position: absolute; white-space: pre; font-size: 23px; line-height: 1;
     letter-spacing: -.01em; color: var(--ink); display: none; }
-  #branch-safe   { top: 0; }
-  #branch-greedy { top: 152px; }
-  .branch .tag { font-size: 9px; letter-spacing: .2em; text-transform: uppercase; color: var(--mute); }
-  #branch-greedy .tag { color: var(--red); }
 
   #rail { position: absolute; left: 0; top: 120px; width: 100%; height: 22px; display: block; }
 
@@ -149,6 +139,12 @@
   .wordmark s { text-decoration: none; color: var(--faint); }
 
   .drafts { margin-top: 38px; }
+  .best-line { margin-top: 34px; display: flex; align-items: baseline; gap: 18px;
+    padding: 14px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+  .best-line .k { font-size: 10px; letter-spacing: .2em; color: var(--mute);
+    text-transform: uppercase; width: 60px; }
+  .best-line .v { font-size: 22px; letter-spacing: -.02em; }
+  .best-line em { font-style: normal; color: var(--mute); font-size: 15px; }
   .draft-row { display: flex; align-items: baseline; gap: 18px; padding: 16px 0;
     border-top: 1px solid var(--rule); cursor: pointer; }
   .draft-row:last-child { border-bottom: 1px solid var(--rule); }
@@ -214,11 +210,11 @@
 
 <section id="screen-title" class="screen is-active">
   <div class="sheet">
-    <div class="wordmark">cadence<s> &middot; two drafts</s></div>
-    <div class="drafts" id="draft-list"></div>
+    <div class="wordmark">cadence<s> &middot; the ink dries while you type</s></div>
+    <div class="best-line"><span class="k">best</span><span class="v" id="title-best"><em>no runs yet</em></span></div>
     <div class="goal" id="goal-row"><i class="label">goal wpm</i><span id="level-list"></span>
       <span class="note" id="goal-note"></span></div>
-    <div class="hint"><span><b>1 2</b> choose</span><span><b>&larr; &rarr;</b> goal</span>
+    <div class="hint"><span><b>&larr; &rarr;</b> goal</span>
       <span><b>any letter</b> begin</span></div>
   </div>
 </section>
@@ -235,12 +231,9 @@
   </div>
 
   <div id="stage">
-    <div class="branch" id="branch-safe"></div>
     <div id="track"><div id="line"></div></div>
     <div id="caret"><div id="caret-line"></div></div>
-    <div id="edge"></div>
     <canvas id="rail"></canvas>
-    <div class="branch" id="branch-greedy"></div>
   </div>
 
   <div class="bar"><div id="bar-fill"></div><div id="bar-notch"></div></div>
@@ -581,15 +574,6 @@
     return Math.min(size - 1, Math.floor(size * Math.pow(rng(), RANK_EXP)));
   }
 
-  // the greedy branch in draft C: denser, longer, worse transitions
-  let GREEDY_CACHE = null;
-  function greedyPool() {
-    if (!GREEDY_CACHE) {
-      GREEDY_CACHE = WORDS.map(tagWord)
-        .filter(t => t.len >= 5 && (t.sameFingerPairs > 0 || t.maxSameHandRun >= 3 || t.len >= 7));
-    }
-    return GREEDY_CACHE;
-  }
 
   function createGenerator(seed) {
     const rng = makeRng(seed);
@@ -622,52 +606,13 @@
       return out;
     }
 
-    // draft B: three-word bars
-    function phrases(chapterIndex, n, perPhrase) {
-      const size = perPhrase || 3;
-      const out = [];
-      for (let i = 0; i < n; i++) out.push(words(chapterIndex, size));
-      return out;
-    }
 
-    // draft C: two valid lines that diverge on the first character and
-    // reconverge afterwards. the greedy line is longer and denser.
-    function branchPair(chapterIndex) {
-      const safe = words(chapterIndex, 3);
-      let greedy = null;
-      for (let attempt = 0; attempt < 40; attempt++) {
-        const cand = words(chapterIndex === 7 ? 7 : 5, 1)[0];
-        const pool = greedyPool();
-        const extra = pool[Math.floor(rng() * pool.length)];
-        const first = cand[0];
-        if (first !== safe[0][0]) {
-          greedy = [cand, extra ? extra.word : cand, words(chapterIndex, 1)[0]];
-          break;
-        }
-      }
-      if (!greedy) {
-        // guaranteed fallback: take any greedy word whose first letter differs
-        const pool = greedyPool().filter(t => t.word[0] !== safe[0][0]);
-        const a = pool[Math.floor(rng() * pool.length)];
-        const b = pool[Math.floor(rng() * pool.length)];
-        greedy = [a.word, b.word, words(chapterIndex, 1)[0]];
-      }
-      const safeLen = safe.join(' ').length;
-      const greedyLen = greedy.join(' ').length;
-      return {
-        safe: safe,
-        greedy: greedy,
-        payout: 1.6,
-        safeLen: safeLen,
-        greedyLen: greedyLen
-      };
-    }
 
-    return { recent: recent, words: words, phrases: phrases, branchPair: branchPair };
+    return { recent: recent, words: words };
   }
 
   const api = {
-    CHAPTERS, chapterAt, makeRng, createGenerator, rejects, hasRoll, poolFor, greedyPool,
+    CHAPTERS, chapterAt, makeRng, createGenerator, rejects, hasRoll, poolFor,
     easeOf, sampleIndex, RANK_EXP, NO_REPEAT_WINDOW
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
@@ -1139,275 +1084,6 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 </script>
 <script>
-/* src/draft-c.js */
-// DRAFT C - "branches"
-// Pressure is spatial: an edge advances from the left at the demand's pace, eating
-// the page. Stay ahead of it. At every junction two lines are valid - the greedy
-// one pays 1.6x but is longer, so taking it costs ground against the chaser. Your
-// fingers choose: the first character you type commits you, because the generator
-// guarantees the two lines diverge on their very first letter.
-//
-// The junction is materialised a WHOLE SEGMENT before the cursor reaches it, and
-// the safe line is provisionally appended to the page as it is. Both of those are
-// load-bearing; see newBranch() and resolve() for why.
-(function (root) {
-  'use strict';
-
-  const req = (typeof require !== 'undefined' && typeof module !== 'undefined');
-  const m = req ? require('./metrics.js') : root.cadence;
-  const s = req ? require('./survival.js') : root.cadence;
-  const g = req ? require('./generator.js') : root.cadence;
-
-  const MAX_TOUCHES = 3;
-  const START_LEAD = 26;      // characters of head start
-  // The edge must stay on screen to be a threat. Outpacing the demand let the gap
-  // grow without bound - it reached 116 characters in testing, pushing the edge
-  // off the left of the stage entirely, so the pressure simply vanished for any
-  // competent player. Capping it also keeps the junction a real decision: a greedy
-  // segment costs ~7 characters of ground, so the cap is about six of them.
-  // 40 also fits on screen behind draft C's caret, which sits at 62% for this reason.
-  const MAX_GAP = 40;
-  const REPRIEVE = 16;        // characters the edge is pushed back when it catches you
-  // Tunable so tools/balance.js can sweep them. The target these were chosen
-  // against: an adaptive player (take the hard line only when the gap is big)
-  // must out-score BOTH pure strategies. If always-safe or always-greedy wins,
-  // the junction is not a decision and the mechanic is decoration.
-  // Measured with tools/sweep-c.js across three typist profiles, 6 seeds each:
-  //   always-safe    64,642
-  //   always-greedy  66,654
-  //   adaptive       70,600 - 72,300  (any gap threshold from 14 to 50)
-  // Adaptive beats both pure strategies by 8-12%, so the junction is a real
-  // decision. It is a SHALLOW one: the adaptive curve is nearly flat across
-  // thresholds, so no particular policy is much better than another. A human has
-  // information this sweep does not - it judges only the gap, never how awkward
-  // the two lines actually look - so the ceiling is probably higher in practice.
-  const TUNING = { greedyPayout: 2.0, edgeGreedyMult: 1.25 };
-
-  // Taking your hands off the keys has to cost something promptly. At the demand's
-  // ordinary pace the edge needs ~8s to cross a full lead and ~5s per reprieve, so
-  // a full stop took 24s to end a run. The edge surges while you are idle instead:
-  // the page catching up fast when you are not moving is the obvious reading.
-  const IDLE_SURGE_AFTER_MS = 1200;
-  const EDGE_IDLE_MULT = 4;
-
-  // Why the edge quickens rather than the hard words simply being slower: in
-  // character coordinates a longer branch costs nothing, because the edge has to
-  // traverse those extra characters too - the gap closes at (yourCps - edgeCps)
-  // regardless of path length. And measured against the typist model in
-  // tools/typist.js, the denser greedy text is only ~5% slower to type, which a
-  // 1.6x payout dwarfs. Without an explicit cost the greedy line is strictly
-  // better and the choice is fake.
-
-  const WARMUP_RATIO = 1.2;   // comfortably legible while the speed tracker fills
-
-  const META = {
-    id: 'c',
-    name: 'branches',
-    blurb: 'two valid lines. the hard one pays double. stay ahead of the edge.',
-    pressure: 'a chaser'
-  };
-
-  function cps(demandWpm) { return (demandWpm * 5) / 60; }
-
-  // The least run-up a junction may have, in characters. The run-up IS the segment
-  // you are typing when the junction opens, and in the short-word chapters a
-  // three-word segment is only 11 characters - under a second at 150 wpm, which is
-  // not enough time to read two lines and choose. Short segments are padded with
-  // plain words (no payout, no fork) until the run-up is at least this long.
-  const MIN_RUNUP = 18;
-
-  function appendSegment(run, text, mult) {
-    for (let i = 0; i < text.length; i++) run.payoutAt.push(mult);
-    run.text += text;
-  }
-
-  // Opens the NEXT junction, a whole segment ahead of the cursor.
-  //
-  // This is the fix for the flaw the player reported: "it ruins the rhythm since
-  // you have to stop and look at each sentence since they show up only after you
-  // complete the previous one." newBranch() used to be called from onKey the
-  // instant the cursor reached segmentEnd, so the two candidate lines appeared
-  // under your fingers with zero lead - you had to stop, read both, and choose.
-  // The choice is meant to be one you have ALREADY made by the time your fingers
-  // arrive, which means the lines have to be on screen while you finish the
-  // current segment. So: the junction is opened as soon as the previous one is
-  // resolved, which gives a lead of one full segment (18-22 characters, 1.4-2.4s
-  // at 110-200 wpm) and leaves both lines on screen continuously.
-  //
-  // The safe line is also appended to the page immediately, as a PROVISIONAL
-  // continuation. Without that the page simply ends at the junction while you are
-  // still typing toward it - a hole in the line and a dead stop for the eye, which
-  // is the stall this change exists to remove. Reaching for the greedy line
-  // rewrites the page from the junction onward (see resolve), and since nothing
-  // past the junction has been typed yet, nothing typed is ever rewritten.
-  function newBranch(run) {
-    const pair = run.gen.branchPair(run.chapterIndex);
-    const safeText = pair.safe.join(' ') + ' ';
-    run.branch = {
-      safeText: safeText,
-      greedyText: pair.greedy.join(' ') + ' ',
-      payout: TUNING.greedyPayout,
-      at: run.text.length,          // where the junction sits in the page
-      committed: null
-    };
-    appendSegment(run, safeText, 1);
-  }
-
-  // The cursor has arrived at the junction and one key has decided it.
-  function resolve(run, which) {
-    const b = run.branch;
-    b.committed = which;
-    if (which === 'greedy') {
-      // swap the provisional safe line out for the greedy one. the cursor is
-      // exactly at b.at, so this never touches a character already struck.
-      run.text = run.text.slice(0, b.at);
-      run.payoutAt.length = b.at;
-      appendSegment(run, b.greedyText, TUNING.greedyPayout);
-      run.greedyTaken++;
-    } else {
-      run.safeTaken++;
-    }
-    run.segmentGreedy = which === 'greedy';
-    run.segmentStart = b.at;
-    while (run.text.length - b.at < MIN_RUNUP) {
-      appendSegment(run, run.gen.words(run.chapterIndex, 1)[0] + ' ', 1);
-    }
-    run.segmentEnd = run.text.length;
-    newBranch(run);                 // open the next one immediately: read-ahead
-  }
-
-  // true when the next keystroke is the one that commits. Callers that choose a
-  // line (the shell's replay, tools/balance.js, tools/sweep-c.js) ask this rather
-  // than inspecting the branch, because "the junction is open" and "the cursor is
-  // standing on it" are now two different things - which is the whole point.
-  function atJunction(run) {
-    return run.branch !== null && run.branch.committed === null && run.cursor === run.branch.at;
-  }
-
-  function createRun(seed) {
-    const run = {
-      draft: 'c', seed: seed, gen: g.createGenerator(seed),
-      text: '', cursor: 0, marks: [], rhythmAt: [], payoutAt: [],
-      branch: null, segmentStart: 0, segmentEnd: 0, segmentGreedy: false,
-      safeTaken: 0, greedyTaken: 0,
-      edge: -START_LEAD, touches: 0, closestGap: Infinity,
-      combo: 0, maxCombo: 0, score: 0, correct: 0, total: 0,
-      v: 0, peakV: 0, ratio: 1, rhythm: 50, chapterIndex: 0,
-      startedAt: null, lastKeyAt: null, nowMs: 0, intervals: [],
-      ended: false, endReason: null,
-      demand: s.createDemand(), speed: m.createSpeed()
-    };
-    // open on a plain committed segment so the FIRST junction has read-ahead too,
-    // rather than greeting the player with a choice on keystroke one.
-    const opening = run.gen.words(0, 3).join(' ') + ' ';
-    appendSegment(run, opening, 1);
-    run.segmentEnd = run.text.length;
-    newBranch(run);
-    return run;
-  }
-
-  function endRun(run, reason) { run.ended = true; run.endReason = reason; }
-
-  function onKey(run, key, nowMs) {
-    if (run.ended) return { correct: false, ended: true, chose: null };
-    if (run.startedAt === null) run.startedAt = nowMs;
-    run.nowMs = nowMs;
-
-    let chose = null;
-    let correct;
-
-    if (atJunction(run)) {
-      // one keystroke decides which line you are on. a wrong key here is an
-      // ordinary error on the line you were already on, not a third outcome.
-      if (key === run.branch.greedyText[0]) { resolve(run, 'greedy'); chose = 'greedy'; correct = true; }
-      else { correct = key === run.text[run.cursor]; resolve(run, 'safe'); chose = 'safe'; }
-    } else {
-      correct = key === run.text[run.cursor];
-    }
-
-    if (run.lastKeyAt !== null) {
-      run.intervals.push(nowMs - run.lastKeyAt);
-      if (run.intervals.length > 64) run.intervals.shift();
-    }
-    run.lastKeyAt = nowMs;
-
-    m.pushKey(run.speed, nowMs);
-    run.v = m.wpmAt(run.speed, nowMs);
-    if (run.v > run.peakV) run.peakV = run.v;
-    run.rhythm = m.rhythmOf(run.intervals);
-
-    run.total++;
-    run.marks[run.cursor] = correct ? 'ok' : 'err';
-    run.rhythmAt[run.cursor] = run.rhythm;
-    const payout = run.payoutAt[run.cursor] || 1;
-    run.cursor++;
-
-    if (correct) {
-      run.correct++;
-      run.combo++;
-      if (run.combo > run.maxCombo) run.maxCombo = run.combo;
-      run.score += m.pointsFor(run.v, run.rhythm, run.combo) * payout;
-    } else {
-      run.combo = 0;
-    }
-
-    return { correct: correct, ended: run.ended, chose: chose };
-  }
-
-  function tick(run, nowMs, dtSeconds) {
-    if (run.ended || run.startedAt === null) return;
-    run.nowMs = nowMs;
-
-    run.v = m.wpmAt(run.speed, nowMs);
-
-    // Until the speed tracker is warm, rolling wpm is meaningless - it reads near
-    // zero however fast you are going. Pin the ratio somewhere comfortable and
-    // keep the cold-start zeros out of the demand ratchet.
-    if (!m.isWarm(run.speed)) {
-      run.ratio = WARMUP_RATIO;
-      s.stepDemand(run.demand, dtSeconds);
-    } else {
-      s.sampleSpeed(run.demand, run.v, nowMs);
-      s.stepDemand(run.demand, dtSeconds);
-      run.ratio = run.demand.value > 0 ? run.v / run.demand.value : 0;
-    }
-
-    const next = g.chapterAt(run.demand.value);
-    if (next > run.chapterIndex) run.chapterIndex = next;
-
-    const idle = run.lastKeyAt !== null && (nowMs - run.lastKeyAt) > IDLE_SURGE_AFTER_MS;
-    let edgeRate = cps(run.demand.value) * (run.segmentGreedy ? TUNING.edgeGreedyMult : 1);
-    if (idle) edgeRate *= EDGE_IDLE_MULT;
-    run.edge += edgeRate * dtSeconds;
-
-    if (run.cursor - run.edge > MAX_GAP) run.edge = run.cursor - MAX_GAP;
-
-    const gap = run.cursor - run.edge;
-    if (gap < run.closestGap) run.closestGap = gap;
-    if (gap <= 0) {
-      run.touches++;
-      run.edge = run.cursor - REPRIEVE;
-      if (run.touches >= MAX_TOUCHES) endRun(run, 'caught');
-    }
-
-  }
-
-  function gapOf(run) { return run.cursor - run.edge; }
-  function inkAhead() { return 1; }
-  function endLabel() { return 'the edge caught you'; }
-
-  const api = {
-    draftC: {
-      META, createRun, onKey, tick, inkAhead, endLabel, gapOf, atJunction,
-      MAX_TOUCHES, START_LEAD, MAX_GAP, TUNING, EDGE_IDLE_MULT,
-      strikesOf: run => run.touches, maxStrikes: () => MAX_TOUCHES
-    }
-  };
-  if (typeof module !== 'undefined' && module.exports) module.exports = api.draftC;
-  else root.cadence = Object.assign(root.cadence || {}, api);
-})(typeof globalThis !== 'undefined' ? globalThis : this);
-</script>
-<script>
 /* src/rail.js */
 (function (root) {
   'use strict';
@@ -1694,7 +1370,6 @@
 
       const first = Math.max(0, cursor - WINDOW_BEHIND);
       const last = Math.min(run.text.length, first + WINDOW);
-      const isC = run.draft === 'c';
 
       for (let idx = first; idx < first + WINDOW; idx++) {
         const span = st.spans[idx % WINDOW];
@@ -1733,8 +1408,6 @@
           }
         }
 
-        // draft C: the edge has consumed everything behind it
-        if (isC && idx < run.edge) { op = 0; cls = 'miss'; }
 
         if (span.__cls !== cls) { span.className = cls; span.__cls = cls; }
         const o = op >= 1 ? '' : op.toFixed(3);
@@ -1798,7 +1471,7 @@
   const g = req ? require('./generator.js') : root.cadence;
 
   const KEY = 'cadence.v2';
-  const DRAFT_IDS = ['a', 'c'];
+  const DRAFT_IDS = ['a'];
 
   function blank() {
     const r = { v: 2 };
@@ -2002,13 +1675,9 @@
   const c = root.cadence;
   const S = root.cadenceScreens;
 
-  const DRAFTS = { a: c.draftA, c: c.draftC };
-  const ORDER = ['a', 'c'];
+  const D = c.draftA;
   const CHAPTER_WORDS = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'];
-  const STRIKE_LABEL = { a: 'strikes', c: 'touches' };
-  // Draft C's pressure comes from behind, so its caret sits further right to leave
-  // room for the edge. A and B show the page ahead, so theirs sits left.
-  const CARET_X = { a: 0.34, c: 0.62 };
+  const CARET_X = 0.34;   // where the caret sits across the stage
 
   // ---------------------------------------------------------------------------
   // The goal ladder - draft A.
@@ -2092,19 +1761,19 @@
       ? 'best reached <b>' + best.goal + '</b> in ' + (best.ms / 1000).toFixed(0) + 's'
       : 'hold the goal for ten seconds to reach it';
     // the ladder is draft A's pacer; draft C paces itself off your own speed
-    els['goal-row'].style.display = app.draftId === 'a' ? 'flex' : 'none';
+    els['goal-row'].style.display = 'flex';
   }
 
   const els = {};
-  const app = { draftId: 'a', run: null, renderer: null, rail: null, screen: 'title', last: 0,
+  const app = { run: null, renderer: null, rail: null, screen: 'title', last: 0,
     goals: null };
 
   function grab() {
-    const ids = ['screen-title', 'screen-run', 'screen-result', 'draft-list',
+    const ids = ['screen-title', 'screen-run', 'screen-result', 'title-best',
       'goal-row', 'level-list', 'goal-note', 'hud-goal', 'hud-goal-label', 'hud-goal-wrap',
       'hud-score', 'hud-wpm', 'hud-demand', 'hud-rhythm', 'hud-chapter', 'hud-chapter-label',
       'strikes', 'strike-label', 'stage', 'track', 'line', 'caret', 'caret-line',
-      'edge', 'branch-safe', 'branch-greedy', 'rail',
+      'rail',
       'bar-fill', 'bar-notch', 'result-sheet'];
     for (const id of ids) els[id] = document.getElementById(id);
   }
@@ -2120,39 +1789,24 @@
 
   function renderTitle() {
     const recs = S.loadRecords();
-    els['draft-list'].innerHTML = ORDER.map((id, i) => {
-      const D = DRAFTS[id];
-      const r = recs[id];
-      const best = r.highest
-        ? r.highest.score.toLocaleString('en-US') + ' <em>&middot; ' + S.formatDuration(r.longest.ms) + '</em>'
-        : '<em>—</em>';
-      return '<div class="draft-row' + (id === app.draftId ? ' sel' : '') + '" data-id="' + id + '">' +
-        '<span class="k">' + (i + 1) + '</span>' +
-        '<span class="n">' + D.META.name + '</span>' +
-        '<span class="d">' + D.META.blurb + '</span>' +
-        '<span class="b">' + best + '</span></div>';
-    }).join('');
-    for (const row of els['draft-list'].children) {
-      row.addEventListener('click', () => { app.draftId = row.dataset.id; renderTitle(); startRun(); });
-    }
+    const r = recs.a;
+    els['title-best'].innerHTML = r.highest
+      ? r.highest.score.toLocaleString('en-US') + ' <em>&middot; ' +
+        S.formatDuration(r.longest.ms) + '</em>'
+      : '<em>no runs yet</em>';
     renderLevels();
   }
 
   // ---------------- run ----------------
 
   function startRun() {
-    app.run = DRAFTS[app.draftId].createRun((Math.random() * 0x7fffffff) | 0,
+    app.run = D.createRun((Math.random() * 0x7fffffff) | 0,
       { goal: app.goals.goal });
     app.renderer.reset();
     app.rail.reset();
     app.last = performance.now();
-    applyCaretX(app.draftId);
-    els['strike-label'].textContent = STRIKE_LABEL[app.draftId];
-    els['edge'].style.display = app.draftId === 'c' ? 'block' : 'none';
-    const showBranch = app.draftId === 'c' ? 'block' : 'none';
-    els['branch-safe'].style.display = showBranch;
-    els['branch-greedy'].style.display = showBranch;
-    els['hud-goal-wrap'].style.display = app.draftId === 'a' ? 'block' : 'none';
+    els['strike-label'].textContent = 'strikes';
+    
     show('run');
     app.rail.resize();            // the canvas is only measurable once visible
     app.renderer.measure();
@@ -2179,57 +1833,11 @@
   function invalidateStageWidth() { stageWidth = 0; }
   function caretScreenX() {
     if (!stageWidth) stageWidth = els['stage'].getBoundingClientRect().width;
-    return stageWidth * CARET_X[app.draftId];
+    return stageWidth * CARET_X;
   }
 
-  function applyCaretX(draftId) {
-    document.documentElement.style.setProperty('--caret-x', (CARET_X[draftId] * 100) + '%');
-    invalidateStageWidth();
-  }
-
-  function drawOverlays(run, info, now) {
-    const cw = info.charWidth;
-    const baseX = caretScreenX() + info.caretOffset;
-
-
-    if (run.draft === 'c') {
-      const edgeX = baseX + (run.edge - run.cursor) * cw;
-      els['edge'].style.left = Math.max(-40, edgeX).toFixed(1) + 'px';
-
-      // The fork, drawn AT the junction rather than at the caret.
-      //
-      // The junction is open a whole segment early (see draft-c.js newBranch) and
-      // the safe line is already on the page as a provisional continuation, so the
-      // main line carries it inline and needs no overlay: what the overlay has to
-      // show is the line you would have to reach for. Drawing it at the junction's
-      // own x - not at the caret - is what lets you read it while you finish the
-      // current segment, which is the whole fix. #branch-safe carries the x1 tag,
-      // so the fork point is marked on the line you are on as well.
-      const b = run.branch;
-      if (b && b.committed === null) {
-        const forkX = baseX + (b.at - run.cursor) * cw;
-        els['branch-safe'].style.left = forkX.toFixed(1) + 'px';
-        els['branch-greedy'].style.left = forkX.toFixed(1) + 'px';
-        if (els['branch-greedy'].dataset.at !== String(b.at)) {
-          els['branch-greedy'].dataset.at = String(b.at);
-          els['branch-safe'].innerHTML = '<span class="tag">&times;1</span>';
-          els['branch-greedy'].innerHTML = b.greedyText +
-            '<span class="tag">  &times;' + DRAFTS.c.TUNING.greedyPayout + '  edge faster</span>';
-        }
-        // the closer the junction, the stronger the fork reads
-        const away = Math.max(0, b.at - run.cursor);
-        const near = Math.max(0.35, Math.min(1, 1.15 - away / 40));
-        els['branch-safe'].style.opacity = near.toFixed(2);
-        els['branch-greedy'].style.opacity = near.toFixed(2);
-      } else {
-        els['branch-safe'].style.opacity = '0';
-        els['branch-greedy'].style.opacity = '0';
-      }
-    }
-  }
 
   function updateHud(run) {
-    const D = DRAFTS[app.draftId];
     els['hud-score'].textContent = Math.round(run.score).toLocaleString('en-US');
     els['hud-wpm'].textContent = Math.round(run.v);
     els['hud-demand'].textContent = Math.round(run.demand.value);
@@ -2270,10 +1878,8 @@
     app.last = now;
     if (app.screen !== 'run' || !app.run) return;
 
-    const D = DRAFTS[app.draftId];
     D.tick(app.run, now, dt);
     const info = app.renderer.draw(app.run, D, dt);
-    drawOverlays(app.run, info, now);
     app.rail.draw(now, app.run.rhythm);
     updateHud(app.run);
 
@@ -2283,9 +1889,8 @@
   // ---------------- result ----------------
 
   function showResult(run) {
-    const D = DRAFTS[app.draftId];
     const s = S.summarise(run);
-    const fell = S.recordRun(app.draftId, run);
+    const fell = S.recordRun('a', run);
     const chapter = c.CHAPTERS[s.chapterIndex];
 
     const reached = run.draft === 'a' ? c.draftA.reachedOf(run) : [];
@@ -2334,20 +1939,13 @@
     // key is how a screen ends up doing two things at once.
     if (app.screen === 'title' && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
       e.preventDefault();
-      if (app.draftId !== 'a') return;         // the ladder is draft A's alone
       stepGoal(e.key === 'ArrowRight' ? 1 : -1, e.shiftKey);
       return;
     }
 
-    if (app.screen !== 'run' && /^[12]$/.test(e.key)) {
-      app.draftId = ORDER[Number(e.key) - 1];
-      renderTitle();
-      if (app.screen === 'result') show('title');
-      return;
-    }
 
     if (app.screen === 'result' && (e.key === 'c' || e.key === 'C')) {
-      const line = S.scoreLine(app.draftId, DRAFTS[app.draftId].META.name, app.run);
+      const line = S.scoreLine('a', D.META.name, app.run);
       if (navigator.clipboard) navigator.clipboard.writeText(line).catch(() => {});
       return;
     }
@@ -2357,7 +1955,7 @@
 
     if (app.screen !== 'run') { startRun(); app.last = now; }
 
-    const res = DRAFTS[app.draftId].onKey(app.run, e.key, now);
+    const res = D.onKey(app.run, e.key, now);
     app.rail.mark(now);
     if (res.ended) finishRun();
   }
@@ -2384,24 +1982,16 @@
   // Deterministic: it never waits on rAF or setTimeout, both of which a browser
   // throttles hard in a background tab. Used to preview a draft at a chosen point
   // in its difficulty curve, and to verify rendering without racing the clock.
-  function replay(draftId, opts) {
+  function replay(opts) {
     const o = Object.assign({ keys: 120, msPerKey: 70, jitter: 0, errorEvery: 0, seed: 1,
       goal: 100 }, opts || {});
-    const D = DRAFTS[draftId];
     if (!app.goals) app.goals = loadGoalState();
-    app.draftId = draftId;
     app.screen = 'replay';                     // keeps frame() from clobbering us
     app.run = D.createRun(o.seed, { goal: o.goal });
     app.renderer.reset();
     app.rail.reset();
 
-    applyCaretX(draftId);
-    els['strike-label'].textContent = STRIKE_LABEL[draftId];
-    els['edge'].style.display = draftId === 'c' ? 'block' : 'none';
-    const vis = draftId === 'c' ? 'block' : 'none';
-    els['branch-safe'].style.display = vis;
-    els['branch-greedy'].style.display = vis;
-    els['hud-goal-wrap'].style.display = draftId === 'a' ? 'block' : 'none';
+    els['strike-label'].textContent = 'strikes';
     show('run');                  // before any drawing: a hidden canvas measures 0
     app.rail.resize();
     app.renderer.measure();
@@ -2412,12 +2002,7 @@
 
     for (let i = 0; i < o.keys && !app.run.ended; i++) {
       const run = app.run;
-      let ch;
-      if (draftId === 'c' && D.atJunction(run)) {
-        ch = (o.greedy ? run.branch.greedyText : run.branch.safeText)[0];
-      } else {
-        ch = run.text[run.cursor];
-      }
+      let ch = run.text[run.cursor];
       if (ch === undefined) ch = ' ';
       const wrong = o.errorEvery && i > 0 && i % o.errorEvery === 0;
       D.onKey(run, wrong ? (ch === 'q' ? 'z' : 'q') : ch, now);
@@ -2434,13 +2019,12 @@
 
     const run = app.run;
     const info = app.renderer.draw(run, D, 1 / 60);
-    drawOverlays(run, info, now);
     app.rail.draw(now, run.rhythm);
     updateHud(run);
     app.screen = 'replay';
 
     return {
-      draft: draftId, cursor: run.cursor, score: Math.round(run.score),
+      cursor: run.cursor, score: Math.round(run.score),
       wpm: Math.round(run.v), demand: +run.demand.value.toFixed(1),
       ratio: +run.ratio.toFixed(2), rhythm: run.rhythm,
       goal: run.demand.goal, reached: run.draft === 'a' ? run.demand.reached.length : 0,
@@ -2451,7 +2035,7 @@
   }
 
   root.cadenceApp = { app: app, els: els, startRun: startRun, finishRun: finishRun,
-    boot: boot, DRAFTS: DRAFTS, replay: replay, show: show, renderTitle: renderTitle };
+    boot: boot, draft: D, replay: replay, show: show, renderTitle: renderTitle };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();

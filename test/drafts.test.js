@@ -3,11 +3,8 @@ const assert = require('node:assert/strict');
 const { createTypist } = require('../tools/typist.js');
 const { makeRng } = require('../src/generator.js');
 
-const DRAFTS = {
-  a: require('../src/draft-a.js'),
-  c: require('../src/draft-c.js')
-};
-const IDS = ['a', 'c'];
+const DRAFTS = { a: require('../src/draft-a.js') };
+const IDS = ['a'];
 
 // Play a draft with a difficulty-aware typist that errs more when it cannot read.
 function play(id, opts) {
@@ -26,11 +23,7 @@ function play(id, opts) {
     const typing = o.stopAfter === null || elapsed < o.stopAfter;
     if (typing && now >= next) {
       let intended;
-      if (id === 'c' && D.atJunction(run)) {
-        intended = (o.greedy ? run.branch.greedyText : run.branch.safeText)[0];
-      } else {
-        intended = run.text[run.cursor];
-      }
+      intended = run.text[run.cursor];
       if (intended === undefined) intended = ' ';
       let key = intended;
       if (typist.errs(D.inkAhead(run, 0))) key = typist.wrongKey(intended);
@@ -184,94 +177,6 @@ test('draft A: the page never fades the newest characters', () => {
     run.ratio = ratio;
     assert.equal(A.inkAhead(run, 40), 1, 'faded the window edge at ratio ' + ratio);
   }
-});
-
-// --- draft C specifics ------------------------------------------------------
-
-test('draft C: one keystroke commits you to a line', () => {
-  const C = DRAFTS.c;
-  const run = C.createRun(5);
-  let now = 1000;
-  while (!C.atJunction(run)) { C.onKey(run, run.text[run.cursor], now); now += 70; }
-  const branch = run.branch;
-  assert.equal(branch.committed, null);
-  assert.notEqual(branch.safeText[0], branch.greedyText[0]);
-  C.onKey(run, branch.greedyText[0], now);
-  assert.equal(branch.committed, 'greedy');
-  assert.equal(run.greedyTaken, 1);
-});
-
-// --- draft C: read-ahead ----------------------------------------------------
-
-test('draft C: both lines are on screen a whole segment before the junction', () => {
-  // Regression test for the flaw the player reported: the two candidate lines used
-  // to appear at the instant the cursor reached the junction, so you had to stop,
-  // read both and choose. The junction must now be open - and the page must
-  // already run past it - well before your fingers arrive.
-  const C = DRAFTS.c;
-  const run = C.createRun(11);
-  let now = 1000;
-  const leads = [];
-  for (let i = 0; i < 600 && !run.ended; i++) {
-    assert.notEqual(run.branch, null, 'no junction open at cursor ' + run.cursor);
-    assert.equal(run.branch.committed, null, 'the open junction was already resolved');
-    assert.ok(run.branch.at >= run.cursor,
-      'the cursor ran past an unresolved junction by ' + (run.cursor - run.branch.at));
-    // the page must never end at or before the junction: there is always a
-    // provisional continuation to read, so the line never stalls.
-    assert.ok(run.text.length > run.branch.at,
-      'the page ended at the junction (length ' + run.text.length + ')');
-    const res = C.onKey(run, run.text[run.cursor], now);
-    // a junction just resolved: the next one is already open, and its run-up is
-    // how much warning the player gets.
-    if (res.chose !== null) leads.push(run.branch.at - run.cursor);
-    C.tick(run, now, 1 / 60);
-    now += 70;
-  }
-  assert.ok(leads.length > 5, 'passed only ' + leads.length + ' junctions');
-  // the commit keystroke itself has already been struck, so the lead is one less
-  // than draft C's MIN_RUNUP
-  const minLead = Math.min.apply(null, leads);
-  assert.ok(minLead >= 17,
-    'the shortest run-up to a junction was only ' + minLead + ' characters');
-});
-
-test('draft C: taking the greedy line never rewrites anything already typed', () => {
-  const C = DRAFTS.c;
-  const run = C.createRun(23);
-  let now = 1000;
-  while (!C.atJunction(run)) { C.onKey(run, run.text[run.cursor], now); now += 70; }
-  const typed = run.text.slice(0, run.cursor);
-  const greedy = run.branch.greedyText;
-  C.onKey(run, greedy[0], now);
-  assert.equal(run.text.slice(0, typed.length), typed, 'the committed page changed');
-  assert.equal(run.text.slice(typed.length, typed.length + greedy.length), greedy,
-    'the greedy line is not on the page after committing to it');
-  // and the payout follows the swap, character for character
-  for (let i = 0; i < greedy.length; i++) {
-    assert.equal(run.payoutAt[typed.length + i], C.TUNING.greedyPayout,
-      'payout at ' + i + ' did not follow the greedy swap');
-  }
-});
-
-test('draft C: the greedy line pays double and quickens the edge', () => {
-  const C = DRAFTS.c;
-  assert.equal(C.TUNING.greedyPayout, 2.0);
-  assert.equal(C.TUNING.edgeGreedyMult, 1.25);
-
-  const safe = play('c', { wpm: 130, jitter: 0.12, greedy: false, seed: 77 });
-  const greedy = play('c', { wpm: 130, jitter: 0.12, greedy: true, seed: 77 });
-  // the explicit cost has to bite: always-greedy must die sooner than always-safe
-  assert.ok(greedy.secs < safe.secs,
-    'greedy lasted ' + greedy.secs.toFixed(0) + 's vs safe ' + safe.secs.toFixed(0) + 's');
-});
-
-test('draft C: the edge catching you three times ends the run', () => {
-  const C = DRAFTS.c;
-  const r = play('c', { wpm: 80, jitter: 0.2, greedy: true, maxSecs: 400 });
-  assert.equal(r.run.ended, true);
-  assert.equal(r.run.endReason, 'caught');
-  assert.equal(r.run.touches, 3);
 });
 
 // --- elapsed time comes from the engine clock, not the wall clock ------------

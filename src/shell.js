@@ -4,13 +4,9 @@
   const c = root.cadence;
   const S = root.cadenceScreens;
 
-  const DRAFTS = { a: c.draftA, c: c.draftC };
-  const ORDER = ['a', 'c'];
+  const D = c.draftA;
   const CHAPTER_WORDS = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'];
-  const STRIKE_LABEL = { a: 'strikes', c: 'touches' };
-  // Draft C's pressure comes from behind, so its caret sits further right to leave
-  // room for the edge. A and B show the page ahead, so theirs sits left.
-  const CARET_X = { a: 0.34, c: 0.62 };
+  const CARET_X = 0.34;   // where the caret sits across the stage
 
   // ---------------------------------------------------------------------------
   // The goal ladder - draft A.
@@ -94,19 +90,19 @@
       ? 'best reached <b>' + best.goal + '</b> in ' + (best.ms / 1000).toFixed(0) + 's'
       : 'hold the goal for ten seconds to reach it';
     // the ladder is draft A's pacer; draft C paces itself off your own speed
-    els['goal-row'].style.display = app.draftId === 'a' ? 'flex' : 'none';
+    els['goal-row'].style.display = 'flex';
   }
 
   const els = {};
-  const app = { draftId: 'a', run: null, renderer: null, rail: null, screen: 'title', last: 0,
+  const app = { run: null, renderer: null, rail: null, screen: 'title', last: 0,
     goals: null };
 
   function grab() {
-    const ids = ['screen-title', 'screen-run', 'screen-result', 'draft-list',
+    const ids = ['screen-title', 'screen-run', 'screen-result', 'title-best',
       'goal-row', 'level-list', 'goal-note', 'hud-goal', 'hud-goal-label', 'hud-goal-wrap',
       'hud-score', 'hud-wpm', 'hud-demand', 'hud-rhythm', 'hud-chapter', 'hud-chapter-label',
       'strikes', 'strike-label', 'stage', 'track', 'line', 'caret', 'caret-line',
-      'edge', 'branch-safe', 'branch-greedy', 'rail',
+      'rail',
       'bar-fill', 'bar-notch', 'result-sheet'];
     for (const id of ids) els[id] = document.getElementById(id);
   }
@@ -122,39 +118,24 @@
 
   function renderTitle() {
     const recs = S.loadRecords();
-    els['draft-list'].innerHTML = ORDER.map((id, i) => {
-      const D = DRAFTS[id];
-      const r = recs[id];
-      const best = r.highest
-        ? r.highest.score.toLocaleString('en-US') + ' <em>&middot; ' + S.formatDuration(r.longest.ms) + '</em>'
-        : '<em>—</em>';
-      return '<div class="draft-row' + (id === app.draftId ? ' sel' : '') + '" data-id="' + id + '">' +
-        '<span class="k">' + (i + 1) + '</span>' +
-        '<span class="n">' + D.META.name + '</span>' +
-        '<span class="d">' + D.META.blurb + '</span>' +
-        '<span class="b">' + best + '</span></div>';
-    }).join('');
-    for (const row of els['draft-list'].children) {
-      row.addEventListener('click', () => { app.draftId = row.dataset.id; renderTitle(); startRun(); });
-    }
+    const r = recs.a;
+    els['title-best'].innerHTML = r.highest
+      ? r.highest.score.toLocaleString('en-US') + ' <em>&middot; ' +
+        S.formatDuration(r.longest.ms) + '</em>'
+      : '<em>no runs yet</em>';
     renderLevels();
   }
 
   // ---------------- run ----------------
 
   function startRun() {
-    app.run = DRAFTS[app.draftId].createRun((Math.random() * 0x7fffffff) | 0,
+    app.run = D.createRun((Math.random() * 0x7fffffff) | 0,
       { goal: app.goals.goal });
     app.renderer.reset();
     app.rail.reset();
     app.last = performance.now();
-    applyCaretX(app.draftId);
-    els['strike-label'].textContent = STRIKE_LABEL[app.draftId];
-    els['edge'].style.display = app.draftId === 'c' ? 'block' : 'none';
-    const showBranch = app.draftId === 'c' ? 'block' : 'none';
-    els['branch-safe'].style.display = showBranch;
-    els['branch-greedy'].style.display = showBranch;
-    els['hud-goal-wrap'].style.display = app.draftId === 'a' ? 'block' : 'none';
+    els['strike-label'].textContent = 'strikes';
+    
     show('run');
     app.rail.resize();            // the canvas is only measurable once visible
     app.renderer.measure();
@@ -181,57 +162,11 @@
   function invalidateStageWidth() { stageWidth = 0; }
   function caretScreenX() {
     if (!stageWidth) stageWidth = els['stage'].getBoundingClientRect().width;
-    return stageWidth * CARET_X[app.draftId];
+    return stageWidth * CARET_X;
   }
 
-  function applyCaretX(draftId) {
-    document.documentElement.style.setProperty('--caret-x', (CARET_X[draftId] * 100) + '%');
-    invalidateStageWidth();
-  }
-
-  function drawOverlays(run, info, now) {
-    const cw = info.charWidth;
-    const baseX = caretScreenX() + info.caretOffset;
-
-
-    if (run.draft === 'c') {
-      const edgeX = baseX + (run.edge - run.cursor) * cw;
-      els['edge'].style.left = Math.max(-40, edgeX).toFixed(1) + 'px';
-
-      // The fork, drawn AT the junction rather than at the caret.
-      //
-      // The junction is open a whole segment early (see draft-c.js newBranch) and
-      // the safe line is already on the page as a provisional continuation, so the
-      // main line carries it inline and needs no overlay: what the overlay has to
-      // show is the line you would have to reach for. Drawing it at the junction's
-      // own x - not at the caret - is what lets you read it while you finish the
-      // current segment, which is the whole fix. #branch-safe carries the x1 tag,
-      // so the fork point is marked on the line you are on as well.
-      const b = run.branch;
-      if (b && b.committed === null) {
-        const forkX = baseX + (b.at - run.cursor) * cw;
-        els['branch-safe'].style.left = forkX.toFixed(1) + 'px';
-        els['branch-greedy'].style.left = forkX.toFixed(1) + 'px';
-        if (els['branch-greedy'].dataset.at !== String(b.at)) {
-          els['branch-greedy'].dataset.at = String(b.at);
-          els['branch-safe'].innerHTML = '<span class="tag">&times;1</span>';
-          els['branch-greedy'].innerHTML = b.greedyText +
-            '<span class="tag">  &times;' + DRAFTS.c.TUNING.greedyPayout + '  edge faster</span>';
-        }
-        // the closer the junction, the stronger the fork reads
-        const away = Math.max(0, b.at - run.cursor);
-        const near = Math.max(0.35, Math.min(1, 1.15 - away / 40));
-        els['branch-safe'].style.opacity = near.toFixed(2);
-        els['branch-greedy'].style.opacity = near.toFixed(2);
-      } else {
-        els['branch-safe'].style.opacity = '0';
-        els['branch-greedy'].style.opacity = '0';
-      }
-    }
-  }
 
   function updateHud(run) {
-    const D = DRAFTS[app.draftId];
     els['hud-score'].textContent = Math.round(run.score).toLocaleString('en-US');
     els['hud-wpm'].textContent = Math.round(run.v);
     els['hud-demand'].textContent = Math.round(run.demand.value);
@@ -272,10 +207,8 @@
     app.last = now;
     if (app.screen !== 'run' || !app.run) return;
 
-    const D = DRAFTS[app.draftId];
     D.tick(app.run, now, dt);
     const info = app.renderer.draw(app.run, D, dt);
-    drawOverlays(app.run, info, now);
     app.rail.draw(now, app.run.rhythm);
     updateHud(app.run);
 
@@ -285,9 +218,8 @@
   // ---------------- result ----------------
 
   function showResult(run) {
-    const D = DRAFTS[app.draftId];
     const s = S.summarise(run);
-    const fell = S.recordRun(app.draftId, run);
+    const fell = S.recordRun('a', run);
     const chapter = c.CHAPTERS[s.chapterIndex];
 
     const reached = run.draft === 'a' ? c.draftA.reachedOf(run) : [];
@@ -336,20 +268,13 @@
     // key is how a screen ends up doing two things at once.
     if (app.screen === 'title' && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
       e.preventDefault();
-      if (app.draftId !== 'a') return;         // the ladder is draft A's alone
       stepGoal(e.key === 'ArrowRight' ? 1 : -1, e.shiftKey);
       return;
     }
 
-    if (app.screen !== 'run' && /^[12]$/.test(e.key)) {
-      app.draftId = ORDER[Number(e.key) - 1];
-      renderTitle();
-      if (app.screen === 'result') show('title');
-      return;
-    }
 
     if (app.screen === 'result' && (e.key === 'c' || e.key === 'C')) {
-      const line = S.scoreLine(app.draftId, DRAFTS[app.draftId].META.name, app.run);
+      const line = S.scoreLine('a', D.META.name, app.run);
       if (navigator.clipboard) navigator.clipboard.writeText(line).catch(() => {});
       return;
     }
@@ -359,7 +284,7 @@
 
     if (app.screen !== 'run') { startRun(); app.last = now; }
 
-    const res = DRAFTS[app.draftId].onKey(app.run, e.key, now);
+    const res = D.onKey(app.run, e.key, now);
     app.rail.mark(now);
     if (res.ended) finishRun();
   }
@@ -386,24 +311,16 @@
   // Deterministic: it never waits on rAF or setTimeout, both of which a browser
   // throttles hard in a background tab. Used to preview a draft at a chosen point
   // in its difficulty curve, and to verify rendering without racing the clock.
-  function replay(draftId, opts) {
+  function replay(opts) {
     const o = Object.assign({ keys: 120, msPerKey: 70, jitter: 0, errorEvery: 0, seed: 1,
       goal: 100 }, opts || {});
-    const D = DRAFTS[draftId];
     if (!app.goals) app.goals = loadGoalState();
-    app.draftId = draftId;
     app.screen = 'replay';                     // keeps frame() from clobbering us
     app.run = D.createRun(o.seed, { goal: o.goal });
     app.renderer.reset();
     app.rail.reset();
 
-    applyCaretX(draftId);
-    els['strike-label'].textContent = STRIKE_LABEL[draftId];
-    els['edge'].style.display = draftId === 'c' ? 'block' : 'none';
-    const vis = draftId === 'c' ? 'block' : 'none';
-    els['branch-safe'].style.display = vis;
-    els['branch-greedy'].style.display = vis;
-    els['hud-goal-wrap'].style.display = draftId === 'a' ? 'block' : 'none';
+    els['strike-label'].textContent = 'strikes';
     show('run');                  // before any drawing: a hidden canvas measures 0
     app.rail.resize();
     app.renderer.measure();
@@ -414,12 +331,7 @@
 
     for (let i = 0; i < o.keys && !app.run.ended; i++) {
       const run = app.run;
-      let ch;
-      if (draftId === 'c' && D.atJunction(run)) {
-        ch = (o.greedy ? run.branch.greedyText : run.branch.safeText)[0];
-      } else {
-        ch = run.text[run.cursor];
-      }
+      let ch = run.text[run.cursor];
       if (ch === undefined) ch = ' ';
       const wrong = o.errorEvery && i > 0 && i % o.errorEvery === 0;
       D.onKey(run, wrong ? (ch === 'q' ? 'z' : 'q') : ch, now);
@@ -436,13 +348,12 @@
 
     const run = app.run;
     const info = app.renderer.draw(run, D, 1 / 60);
-    drawOverlays(run, info, now);
     app.rail.draw(now, run.rhythm);
     updateHud(run);
     app.screen = 'replay';
 
     return {
-      draft: draftId, cursor: run.cursor, score: Math.round(run.score),
+      cursor: run.cursor, score: Math.round(run.score),
       wpm: Math.round(run.v), demand: +run.demand.value.toFixed(1),
       ratio: +run.ratio.toFixed(2), rhythm: run.rhythm,
       goal: run.demand.goal, reached: run.draft === 'a' ? run.demand.reached.length : 0,
@@ -453,7 +364,7 @@
   }
 
   root.cadenceApp = { app: app, els: els, startRun: startRun, finishRun: finishRun,
-    boot: boot, DRAFTS: DRAFTS, replay: replay, show: show, renderTitle: renderTitle };
+    boot: boot, draft: D, replay: replay, show: show, renderTitle: renderTitle };
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();

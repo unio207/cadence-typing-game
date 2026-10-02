@@ -76,34 +76,3 @@ test('same seed gives the same text, different seeds do not', () => {
   assert.notDeepEqual(createGenerator(5).words(0, 50), createGenerator(6).words(0, 50));
 });
 
-test('phrases come in fixed-size bars of real words', () => {
-  const bars = createGenerator(11).phrases(2, 30, 3);
-  assert.equal(bars.length, 30);
-  for (const bar of bars) {
-    assert.equal(bar.length, 3);
-    for (const w of bar) assert.match(w, /^[a-z]{2,9}$/);
-  }
-});
-
-test('branch pairs diverge on the very first character', () => {
-  for (let ci = 0; ci < CHAPTERS.length; ci++) {
-    const gen = createGenerator(23 + ci);
-    for (let i = 0; i < 40; i++) {
-      const p = gen.branchPair(ci);
-      assert.equal(p.safe.length, 3);
-      assert.equal(p.greedy.length, 3);
-      assert.notEqual(p.safe[0][0], p.greedy[0][0],
-        'chapter ' + ci + ' branch ' + i + ' shares a first letter: ' + p.safe[0] + ' / ' + p.greedy[0]);
-    }
-  }
-});
-
-test('the greedy branch is the denser one on average', () => {
-  const gen = createGenerator(31);
-  let safe = 0, greedy = 0;
-  for (let i = 0; i < 80; i++) {
-    const p = gen.branchPair(2);
-    safe += p.safeLen; greedy += p.greedyLen;
-  }
-  assert.ok(greedy > safe, 'greedy ' + greedy + ' vs safe ' + safe);
-});

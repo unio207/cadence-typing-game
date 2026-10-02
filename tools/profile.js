@@ -69,7 +69,7 @@ global.getComputedStyle = function () {
 global.window = { devicePixelRatio: 2, addEventListener: function () {} };
 
 const { createRenderer } = require('../src/render.js');
-const DRAFTS = { a: require('../src/draft-a.js'), c: require('../src/draft-c.js') };
+const DRAFTS = { a: require('../src/draft-a.js') };
 
 // ---------------------------------------------------------------- buckets
 const EDGES = [0, 5, 15, 30, 60, 120, 240, 480];

@@ -1,48 +1,40 @@
 # cadence
 
-A typing game for fast typists, in two drafts. No build step, no server, no
-dependencies, no sound.
+The ink dries while you type. Keep up with your goal or type from memory.
+
+No build step, no server, no dependencies, no sound.
 
 **Play it:** open `cadence.html` (one self-contained file), or `index.html` from
-this folder. Pick a draft with `1` `2`, set a goal with `←` `→`, then type any
-letter to begin.
+this folder. Set a goal with `←` `→`, then type any letter to begin.
 
 ```
-1 2       choose a draft         tab       restart instantly
-← →       set your goal wpm      esc       back to the drafts
-shift+T   light / dark           c         copy your score
-↓ ↑       show / hide full stats (result screen)
+← →       set your goal wpm      tab       restart instantly
+shift+T   light / dark           esc       back to the title
+↓ ↑       show / hide full stats (result screen)      c   copy your score
 ```
 
-## The two drafts
+## How it works
 
-Both share one engine: the same word generator, the same rhythm metric, the same
-scoring, the same drying ink. They differ in where the pressure comes from and in
-what sets the pace — draft A paces you against a goal you chose, draft C against a
-chaser that follows your own demonstrated speed.
+You pick a **goal WPM** from a ladder — 40, 55, 70, 85, 100, 115, 130, 150, 170,
+190 — and the drying ink is your pacer against it. The demand eases up to your goal
+over ten seconds and then holds there, so the page is visibly drying within about
+eight seconds whoever you are.
 
-| | pressure | how a run ends |
-|---|---|---|
-| **A — drying ink** | legibility | three wrong guesses on ink you couldn't read |
-| **C — branches** | a chaser | the edge catches you three times |
+Keep up and it stays readable. Fall below 94% of your goal and a hole opens just
+past the caret, and you type across it from memory. Each keystroke lends a little
+ink to the characters just ahead and it decays, so typing keeps the page lit and
+stopping lets it go out — a race against your own fading page.
 
-**A — drying ink.** You pick a **goal WPM** from a ladder — 40, 55, 70, 85, 100,
-115, 130, 150, 170, 190 — and the drying ink is your pacer against it. The demand
-eases up to your goal over ten seconds and then holds there, so the page is
-visibly drying within about eight seconds whoever you are. Keep up and it stays
-readable; fall below 94% of your goal and a hole opens just past the caret and you
-type across it from memory. Hold your goal for ten seconds and you've **reached**
-it: the rung is banked for good and the ladder steps up, so a run is a climb until
-you can't. A typo on legible ink costs only your combo — you can only be killed by
-being wrong about something you couldn't see.
+Hold your goal for ten seconds and you've **reached** it: the rung is banked for
+good and the ladder steps up, so a run is a climb until you can't.
 
-Each keystroke also lends a little ink to the characters just ahead, and it decays,
-so typing keeps the page lit and stopping lets it go out.
+A typo on legible ink costs only your combo. **You can only be killed by being
+wrong about something you couldn't see** — three of those, or two seconds sat in
+the dark, and the run is over.
 
-**C — branches.** An edge advances from the left, eating the page. At every junction
-two lines are valid and the harder one pays **double** — but the edge moves 25%
-faster while you're on it. Your fingers choose: the first character you type
-commits you, because the two lines always diverge on their first letter.
+The run walks through eight chapters as the ladder climbs, each changing what your
+hands are doing: alternating hands, home row, the commonest words, short words,
+same-hand rolls, long words, single-hand runs, and the top row.
 
 ## Scoring
 
@@ -89,37 +81,9 @@ A - drying ink   (pressure: legibility, paced by a goal wpm)
   slow 70 10% under             79     71  8s    12s     14s     0.0         21s   strikes       1,736
   slow 70 10% over              64     72  15s   64s     65s     2.0 @15s    74s   strikes       6,884
   (ends at 240s = survived; `reached` is levels cleared in a run)
-
-C - branches [safe]   (pressure: a chaser)
-------------------------------------------
-  metronome 200   173s     137,417   caught      safe 129 greedy 0 touches 3
-  tight 150       129s      55,551   caught      safe 73 greedy 0 touches 3
-  normal 110      123s      28,305   caught      safe 55 greedy 0 touches 3
-  ragged 110      120s      18,516   caught      safe 53 greedy 0 touches 3
-  slow 70         104s      10,216   caught      safe 29 greedy 0 touches 3
-
-C - branches [greedy]   (pressure: a chaser)
---------------------------------------------
-  metronome 200    81s     117,610   caught      safe 1 greedy 57 touches 3
-  tight 150        82s      64,026   caught      safe 0 greedy 46 touches 3
-  normal 110       80s      31,201   caught      safe 0 greedy 33 touches 3
-  ragged 110       80s      21,256   caught      safe 1 greedy 29 touches 3
-  slow 70          68s      11,191   caught      safe 0 greedy 18 touches 3
-
-C - branches [adaptive]   (pressure: a chaser)
-----------------------------------------------
-  metronome 200   173s     183,523   caught      safe 80 greedy 50 touches 3
-  tight 150       135s      79,518   caught      safe 38 greedy 37 touches 3
-  normal 110      123s      37,793   caught      safe 28 greedy 25 touches 3
-  ragged 110      124s      25,707   caught      safe 32 greedy 23 touches 3
-  slow 70          97s      12,787   caught      safe 14 greedy 12 touches 3
 ```
 
-Draft C is shown under three strategies. That an **adaptive** player — one who takes
-the hard line only when the gap is wide — beats both pure strategies is the test
-that the junction is a real decision rather than decoration.
-
-Two things the draft A table is there to prove. The ink starts drying at **7–14
+Two things that table is there to prove. The ink starts drying at **7–14
 seconds at every speed and every goal**, because that is a property of the ramp
 rather than of the player — it cannot drift with skill. And the survivable band is
 narrow: 10% under your goal puts a hole in the page at about ten seconds and ends
@@ -151,16 +115,15 @@ real use, anything outside 2–9 letters.
 
 ```
 ./tools/test.sh          # 88 tests, no runner or package manager needed
-node tools/balance.js    # play every draft with synthetic typists
-node tools/sweep-c.js    # sweep draft C's two balance constants
+node tools/balance.js    # play the game with synthetic typists
 node tools/profile.js    # per-frame DOM mutation counts, bucketed by run time
 node tools/bundle.js     # rebuild the single-file cadence.html
 python3 tools/serve.py   # dev server that refuses to cache
 ```
 
-`src/` splits into a shared core (`keymap`, `words`, `generator`, `metrics`,
-`survival`) and one file per draft, plus the DOM layer (`render`, `rail`,
-`screens`, `shell`). Everything in the core is a pure function, which is why it
+`src/` splits into a core (`keymap`, `words`, `generator`, `metrics`, `survival`),
+the game itself (`draft-a`), and the DOM layer (`render`, `rail`, `screens`,
+`shell`). Everything in the core is a pure function, which is why it
 can be tested under `node --test` without a browser.
 
 `tools/profile.js` drives a run headlessly and counts **DOM mutations per frame**
@@ -168,6 +131,6 @@ rather than CPU, because browser layout cost tracks mutations and the renderer's
 own compute turned out to be flat. It is what found the two scrolling bugs
 described at the top of `src/render.js`.
 
-In the browser, `cadenceApp.replay(draftId, opts)` deterministically plays a
-scripted run and draws one frame — useful for seeing a draft at a chosen point in
-its difficulty curve without waiting.
+In the browser, `cadenceApp.replay(opts)` deterministically plays a scripted run
+and draws one frame — useful for seeing the game at a chosen point in its
+difficulty curve without waiting.

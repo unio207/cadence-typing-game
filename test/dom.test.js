@@ -60,10 +60,7 @@ global.window = { devicePixelRatio: 2, addEventListener() {} };
 
 const { createRenderer } = require('../src/render.js');
 const { createRail } = require('../src/rail.js');
-const DRAFTS = {
-  a: require('../src/draft-a.js'),
-  c: require('../src/draft-c.js')
-};
+const DRAFTS = { a: require('../src/draft-a.js') };
 
 function harness() {
   const els = {
@@ -78,7 +75,7 @@ test('measure derives a sane character width', () => {
   assert.equal(h.r.measure(), CHAR_W);
 });
 
-for (const id of ['a', 'c']) {
+for (const id of ['a']) {
   test('draft ' + id + ': the renderer produces finite geometry and valid opacity', () => {
     const D = DRAFTS[id];
     const h = harness();
@@ -125,18 +122,6 @@ for (const id of ['a', 'c']) {
     assert.ok(settled <= 181, 'window larger than the 180-character design: ' + settled);
   });
 }
-
-test('draft C blanks everything the edge has consumed', () => {
-  const C = DRAFTS.c;
-  const h = harness();
-  const run = C.createRun(5);
-  let now = 1000;
-  for (let i = 0; i < 120; i++) { C.onKey(run, run.text[run.cursor], now); C.tick(run, now, 1 / 60); now += 60; }
-  run.edge = run.cursor - 10;               // force the edge close behind the caret
-  h.r.draw(run, C, 1 / 60);
-  const consumed = h.els.line.children.filter(s => s.className === 'miss');
-  assert.ok(consumed.length > 0, 'the edge consumed nothing');
-});
 
 test('the rail draws without throwing and keeps a bounded buffer', () => {
   const canvas = railCanvas();

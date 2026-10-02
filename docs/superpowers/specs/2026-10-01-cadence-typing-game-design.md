@@ -4,10 +4,16 @@ A locally-played typing game for fast typists. No build step, no server, no audi
 
 Date: 2026-10-01
 
-> **This spec describes draft A only.** Two further drafts were built over the same
-> engine and are specified in `2026-10-02-drafts-b-and-c.md`. Where the two documents
-> disagree, the second is newer. Sections 5–7 and 9 (visual system, motion, engine,
-> content) are shared by all three drafts; sections 1, 3, 4 and 8 are draft A's own.
+> **Historical note.** Two further drafts were built over this engine and then cut:
+> *the lock* (pressure from per-bar deadlines) and *branches* (two valid lines, a
+> chaser from behind). Both were removed on play feedback — the lock was not
+> engaging enough to earn its complexity, and branches was too buggy and broke the
+> rhythm the game is built around. Their spec, `2026-10-02-drafts-b-and-c.md`, was
+> deleted with them; it is in the git history if the ideas are ever wanted again.
+>
+> Draft A, described here, is the whole game. §3's pacing was later replaced by the
+> goal-wpm model in `2026-10-03-draft-a-pacing.md`, which is newer where the two
+> disagree.
 >
 > Implementation note: the shipped build is `index.html` plus `src/*.js` classic
 > scripts, with `node tools/bundle.js` producing a single-file `cadence.html`. §12's

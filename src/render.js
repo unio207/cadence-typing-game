@@ -117,7 +117,6 @@
 
       const first = Math.max(0, cursor - WINDOW_BEHIND);
       const last = Math.min(run.text.length, first + WINDOW);
-      const isC = run.draft === 'c';
 
       for (let idx = first; idx < first + WINDOW; idx++) {
         const span = st.spans[idx % WINDOW];
@@ -156,8 +155,6 @@
           }
         }
 
-        // draft C: the edge has consumed everything behind it
-        if (isC && idx < run.edge) { op = 0; cls = 'miss'; }
 
         if (span.__cls !== cls) { span.className = cls; span.__cls = cls; }
         const o = op >= 1 ? '' : op.toFixed(3);
