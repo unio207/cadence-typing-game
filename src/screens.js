@@ -103,9 +103,99 @@
     return html;
   }
 
+  // ---------------------------------------------------------------------------
+  // The result screen: minimal by default.
+  //
+  // What stays visible is what you want in the first half second after a run
+  // ends - how long you lasted, what you scored, and whether that beat you. Every
+  // other number is a thing you go and look at, so it lives behind one control in
+  // the hint row, phrased like the other hints rather than built as a button.
+  //
+  // shell.js owns the markup written into #result-sheet and cannot be edited from
+  // here, so this restructures what it finds instead of replacing it: the stats
+  // row and the ink reprint are moved into a .more wrapper that CSS hides until
+  // the sheet carries .is-open. Idempotent - re-running it on an already-enhanced
+  // sheet is a no-op, which is what makes it safe to drive from a MutationObserver.
+  // ---------------------------------------------------------------------------
+
+  const DETAIL_PARTS = ['.stats', '#page-print'];
+
+  function resultOpen(sheet) {
+    return !!sheet && sheet.className.indexOf('is-open') >= 0;
+  }
+
+  function setResultOpen(sheet, open) {
+    if (!sheet) return false;
+    sheet.classList[open ? 'add' : 'remove']('is-open');
+    const ctl = sheet.querySelector('.expand');
+    // The label names what the control will do next, not what state you are in.
+    if (ctl) ctl.innerHTML = '<b>' + (open ? '&#8593;' : '&#8595;') + '</b> ' +
+      (open ? 'hide stats' : 'all stats');
+    return !!open;
+  }
+
+  function enhanceResult(sheet) {
+    if (!sheet || sheet.querySelector('.expand')) return null;
+    const hint = sheet.querySelector('.hint');
+    if (!hint) return null;
+
+    const more = document.createElement('div');
+    more.className = 'more';
+    for (const sel of DETAIL_PARTS) {
+      const el = sheet.querySelector(sel);
+      if (el) more.appendChild(el);          // appendChild moves, it does not copy
+    }
+    sheet.insertBefore(more, hint);
+
+    const ctl = document.createElement('span');
+    ctl.className = 'expand';
+    ctl.setAttribute('role', 'button');
+    ctl.tabIndex = 0;
+    hint.insertBefore(ctl, hint.firstChild);
+    ctl.addEventListener('click', () => setResultOpen(sheet, !resultOpen(sheet)));
+
+    setResultOpen(sheet, false);             // every run starts collapsed
+    return ctl;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Theme. The palette is CSS custom properties on :root, so the whole of dark
+  // mode is one attribute on <html>. resolveTheme is kept pure and separate so
+  // the first-visit rule can be tested without a browser; the identical two lines
+  // are also inlined in <head> so the choice lands before the first paint.
+  // ---------------------------------------------------------------------------
+
+  const THEME_KEY = 'cadence.theme';
+
+  function resolveTheme(stored, prefersDark) {
+    if (stored === 'light' || stored === 'dark') return stored;
+    return prefersDark ? 'dark' : 'light';
+  }
+
+  function storedTheme() {
+    try { return localStorage.getItem(THEME_KEY); } catch (e) { return null; }
+  }
+
+  function currentTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  }
+
+  function applyTheme(theme) {
+    const v = theme === 'dark' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', v);
+    try { localStorage.setItem(THEME_KEY, v); } catch (e) { /* private mode */ }
+    return v;
+  }
+
+  function toggleTheme() {
+    return applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+  }
+
   const api = {
     KEY, DRAFT_IDS, loadRecords, saveRecords, recordRun, summarise,
-    formatDuration, scoreLine, inkTrace, renderPage
+    formatDuration, scoreLine, inkTrace, renderPage,
+    enhanceResult, setResultOpen, resultOpen,
+    THEME_KEY, resolveTheme, storedTheme, currentTheme, applyTheme, toggleTheme
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.cadenceScreens = Object.assign(root.cadenceScreens || {}, api);

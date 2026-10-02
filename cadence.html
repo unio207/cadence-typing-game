@@ -7,6 +7,23 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+// Resolve the theme before the first paint, so a dark-mode player never sees a
+// frame of cream. These are the same two lines as cadenceScreens.resolveTheme,
+// deliberately duplicated: src/screens.js loads at the end of <body>, which is
+// far too late to decide what colour the page is.
+(function () {
+  try {
+    var t = localStorage.getItem('cadence.theme');
+    if (t !== 'light' && t !== 'dark') {
+      t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    document.documentElement.setAttribute('data-theme', t);
+  } catch (e) {
+    document.documentElement.setAttribute('data-theme', 'light');
+  }
+})();
+</script>
 <style>
   :root {
     --paper:    #f7f4ec;
@@ -15,12 +32,32 @@
     --mute:     #a3a098;
     --rule:     #e6e2d7;
     --red:      #b4412f;
+    --faint:    #cfc9ba;   /* the struck-through half of the wordmark */
+    --body:     #7d7a72;   /* running prose: the draft blurbs */
     --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
     --ease: cubic-bezier(.33, 1, .68, 1);
     --size: 30px;
     /* where the caret sits across the stage. draft C moves it right: its threat
        comes from behind, so it needs room to show the edge. */
     --caret-x: 34%;
+  }
+
+  /* Warm dark: the paper is dimmed, not negated. Never pure black - #19150f still
+     has the cream's hue in it, so the page reads as lamplight on the same stock
+     rather than as a different material. --ink-done and --rule have to be lifted
+     off the surface rather than dropped toward it, since on dark the "receded"
+     direction is up. --red keeps its hue and gains lightness: #b4412f against
+     #19150f is barely a colour, and red has to stay the loudest thing on screen
+     because it means an error, a strike, the demand notch or a new record. */
+  :root[data-theme="dark"] {
+    --paper:    #19150f;
+    --ink:      #f0e7d4;
+    --ink-done: #544d41;
+    --mute:     #8b8373;
+    --rule:     #2c261c;
+    --red:      #d4594a;
+    --faint:    #463f32;
+    --body:     #9c9381;
   }
 
   * { box-sizing: border-box; }
@@ -109,7 +146,7 @@
   .sheet { height: 100%; display: flex; flex-direction: column; justify-content: center;
     padding: 0 clamp(20px, 5vw, 64px); max-width: 1040px; margin: 0 auto; }
   .wordmark { font-size: 13px; letter-spacing: .34em; text-transform: uppercase; font-weight: 500; }
-  .wordmark s { text-decoration: none; color: #cfc9ba; }
+  .wordmark s { text-decoration: none; color: var(--faint); }
 
   .drafts { margin-top: 38px; }
   .draft-row { display: flex; align-items: baseline; gap: 18px; padding: 16px 0;
@@ -117,10 +154,22 @@
   .draft-row:last-child { border-bottom: 1px solid var(--rule); }
   .draft-row .k { font-size: 10px; letter-spacing: .2em; color: var(--mute); width: 14px; }
   .draft-row .n { font-size: 25px; letter-spacing: -.02em; width: 190px; font-weight: 500; }
-  .draft-row .d { font-size: 12.5px; color: #7d7a72; flex: 1; padding-right: 20px; }
+  .draft-row .d { font-size: 12.5px; color: var(--body); flex: 1; padding-right: 20px; }
   .draft-row .b { font-size: 12.5px; color: var(--ink); text-align: right; white-space: nowrap; }
   .draft-row .b em { font-style: normal; color: var(--mute); }
   .draft-row:hover .n, .draft-row.sel .n { color: var(--red); }
+
+  /* the goal ladder. one rung per level, cleared rungs inked solid - the ladder is
+     the progression, so it has to read as one object rather than as a form. */
+  .goal { margin-top: 30px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .goal .label { font-size: 10px; letter-spacing: .2em; text-transform: uppercase;
+    color: var(--mute); font-style: normal; width: 104px; flex: none; }
+  .rung { font-size: 15px; letter-spacing: -.02em; color: var(--ink-done); cursor: pointer;
+    font-variant-numeric: tabular-nums; }
+  .rung.cleared { color: var(--ink); }
+  .rung.cleared::after { content: '\00b7'; color: var(--red); margin-left: 2px; }
+  .rung.sel { color: var(--red); font-weight: 500; }
+  .goal .note { font-size: 11.5px; color: var(--body); margin-left: auto; }
 
   .hint { margin-top: 40px; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--mute); }
   .hint b { color: var(--ink); font-weight: 500; }
@@ -135,16 +184,42 @@
   #page-print { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--rule);
     font-size: 16px; line-height: 2.0; max-height: 170px; overflow: hidden; }
 
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  /* the expand control: a hint, not a button. it lives in the hint row and is
+     styled by .hint, so it inherits the 10px uppercase letter-spaced voice. */
+  .hint .expand { cursor: pointer; user-select: none; }
+  .hint .expand:hover { color: var(--ink); }
+
+  /* everything past the headline number. collapsed is the default state; the
+     reveal is one of the two house curves and does not run under reduced motion. */
+  .more { display: none; }
+  #result-sheet.is-open .more { display: block; animation: reveal .3s var(--ease) both; }
+  @keyframes reveal { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+
+  /* theme control. fixed, so it is reachable from the title screen, mid-run and
+     on the result screen without any screen needing to know about it. */
+  #theme-toggle {
+    position: fixed; left: clamp(20px, 5vw, 64px); bottom: 15px; z-index: 5;
+    font-size: 9px; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--mute); cursor: pointer; user-select: none;
+  }
+  #theme-toggle b { color: var(--ink); font-weight: 500; }
+  #theme-toggle:hover { color: var(--ink); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
 </style>
 </head>
 <body>
 
 <section id="screen-title" class="screen is-active">
   <div class="sheet">
-    <div class="wordmark">cadence<s> &middot; three drafts</s></div>
+    <div class="wordmark">cadence<s> &middot; two drafts</s></div>
     <div class="drafts" id="draft-list"></div>
-    <div class="hint"><span><b>1 2</b> choose</span><span><b>any letter</b> begin</span></div>
+    <div class="goal" id="goal-row"><i class="label">goal wpm</i><span id="level-list"></span>
+      <span class="note" id="goal-note"></span></div>
+    <div class="hint"><span><b>1 2</b> choose</span><span><b>&larr; &rarr;</b> goal</span>
+      <span><b>any letter</b> begin</span></div>
   </div>
 </section>
 
@@ -154,6 +229,7 @@
     <span><i class="label">wpm</i><b class="value"><span id="hud-wpm">0</span><span class="of"> / <span id="hud-demand">40</span></span></b></span>
     <span><i class="label">rhythm</i><b class="value" id="hud-rhythm">50</b></span>
     <span class="spacer"></span>
+    <span class="chapter" id="hud-goal-wrap"><i class="label" id="hud-goal-label">goal</i><b class="name" id="hud-goal">40</b></span>
     <span class="chapter"><i class="label" id="hud-chapter-label">chapter one</i><b class="name" id="hud-chapter">open field</b></span>
     <span class="chapter"><i class="label" id="strike-label">strikes</i><div id="strikes"><i></i><i></i><i></i></div></span>
   </div>
@@ -173,6 +249,8 @@
 <section id="screen-result" class="screen">
   <div class="sheet" id="result-sheet"></div>
 </section>
+
+<div id="theme-toggle"><b>shift t</b> <span id="theme-label">dark</span></div>
 
 <script>
 /* src/keymap.js */
@@ -319,7 +397,228 @@
     'thought','through','tonight','totally','touched','towards','trading','traffic','trouble','turning',
     'unusual','useful','usually','village','waiting','walking','wanting','warning','watched','wearing',
     'weather','wedding','weekend','welcome','western','whereas','whether','willing','winning','without',
-    'working','worried','writing','younger'
+    'working','worried','writing','younger',
+
+    // --- expanded pool ---------------------------------------------------
+    // home ground had only 52 eligible words, which with a 12-word no-repeat
+    // window meant the chapter repeated itself constantly. Mixed UK/US spellings
+    // and words capitalised in real use are deliberately excluded: a typing game
+    // must never make the player guess which spelling is on screen.
+    'abroad','accept','ace','ache','acid','acre','across','add','advice','affair','afford','agency',
+    'ago','agree','ahead','aide','aim','air','aisle','alarm','album','alert','alike','alive',
+    'allow','ally','aloud','amber','amble','amend','amid','ample','anchor','angel','anger','angle',
+    'animal','ankle','annual','answer','anyone','apart','apple','apply','arcade','ardent','argue',
+    'arm','army','around','arrive','arrow','art','artist','ask','asleep','aspect','assist','assume',
+    'assure','ate','atom','attach','attack','attend','august','aunt','author','autumn','avenue',
+    'avoid','awake','award','aware','axis','bad','bag','bake','bald','ball','band','bank','bar',
+    'bare','barn','barrel','base','basic','basin','basket','bat','bath','battle','bay','beacon',
+    'beam','bean','bear','beard','beat','beauty','became','become','bed','bee','beef','beer','beg',
+    'began','begin','behalf','behind','belief','bell','belong','belt','bend','bent','beside','bet',
+    'better','beyond','bias','bid','big','bike','bill','bind','bird','bit','bite','bitter','blame',
+    'blank','blanket','blast','bleak','bleed','blew','blind','block','bloom','blow','blown','blue',
+    'board','boast','boat','body','boil','bold','bolt','bomb','bond','bone','book','boot','border',
+    'bore','born','borrow','boss','bottle','bottom','bought','bounce','bound','bow','bowl','box',
+    'boy','branch','brave','bread','break','breath','breeze','bridge','brief','bright','broad',
+    'broken','bronze','brook','brother','brush','bucket','budget','bulk','bull','bundle','burden',
+    'bureau','burn','bury','bus','bush','busy','butter','button','buy','cab','cabin','cable','cage',
+    'cake','calm','camera','camp','cancel','candle','cane','cannot','canvas','canyon','cap','cape',
+    'car','carbon','card','care','career','cargo','carpet','carrot','carve','case','cash','cast',
+    'casual','cat','catch','cattle','caught','caution','cave','cavern','cell','cellar','censor',
+    'center','chain','chair','chalk','chance','change','charge','charm','chart','chase','chat',
+    'cheap','check','cheek','cheer','cheese','chef','cherry','chest','chew','chief','child',
+    'chilly','chin','chip','choice','choose','chop','chorus','chosen','church','circle','circus',
+    'cite','citizen','city','civil','clad','claim','clash','class','classic','clay','clean','clerk',
+    'clever','client','cliff','climb','clip','cloak','clock','closet','cloth','cloud','clown',
+    'club','clue','cluster','coal','coat','code','coffee','coin','cold','collar','collect','colt',
+    'column','comb','combat','comedy','comfort','comic','command','commit','common','compact',
+    'compare','compete','complex','comply','concert','conduct','confirm','connect','consent',
+    'consist','consult','contact','contain','content','contest','context','control','convert',
+    'convey','cook','cookie','cool','cop','cope','copper','copy','cord','core','cork','corn',
+    'corner','correct','corrupt','cosmic','cost','cotton','council','counter','county','coup',
+    'couple','courage','course','courted','cousin','covered','cow','coward','cozy','crack','cradle',
+    'craft','crane','crash','crater','crawl','crazy','cream','create','credit','creek','crew',
+    'crisis','crisp','critic','crop','cross','crow','crowd','crown','crucial','cruise','crumble',
+    'crush','cry','crystal','cube','cubic','cuff','cult','cultural','cup','curb','cure','curious',
+    'curl','current','curtain','custom','cut','dad','damage','danger','dare','daring','darkness',
+    'dart','data','date','daughter','dawn','dead','deaf','dealer','dean','debate','debt','decade',
+    'decent','decide','deck','declare','decline','deduct','deed','deem','deep','deeply','deer',
+    'defeat','defend','define','degree','delay','delete','deliver','demand','denied','dent',
+    'dentist','deny','depart','depend','deposit','depth','derive','desert','design','desire','desk',
+    'despair','despite','dessert','detail','detect','devote','dial','diamond','diary','dice','died',
+    'diet','differ','dig','digital','dim','dine','dinner','dip','dire','direct','dirt','dirty',
+    'disable','disagree','discard','discover','dish','disk','dispute','distant','dive','divide',
+    'divine','dock','doctor','dog','dollar','domain','donate','dose','dot','double','doubt','dove',
+    'dozen','draft','dragon','drama','draw','drawer','dress','drew','drift','drill','drive',
+    'driven','drop','drown','drug','drum','dry','dual','duck','due','dues','dug','duke','dull',
+    'dump','dune','during','dusk','dust','duties','duty','dyed','dynamic','eager','eagle','ear',
+    'earlier','earn','earnest','ease','easily','east','easy','eat','eating','echo','economy','edge',
+    'edit','editor','educate','effect','effort','egg','either','elbow','elder','elect','element',
+    'elevate','eleven','embrace','emerge','employ','empty','enable','enact','encode','end','endure',
+    'energy','engage','engine','enjoy','enlist','enough','ensure','entire','entry','equal','equip',
+    'escape','escort','essay','estate','eternal','event','eventual','evidence','exact','exam',
+    'examine','exceed','except','excess','excite','excuse','exhaust','exhibit','exit','expand',
+    'expect','expert','explain','explore','export','expose','extend','extent','extra','extreme',
+    'eye','fabric','facade','facing','factor','factory','fade','fail','failure','fair','fairly',
+    'faith','fake','fallen','fame','family','famous','fan','fantasy','farm','farmer','fast',
+    'fasten','fat','fate','father','fatigue','fault','favour','fear','feather','federal','feed',
+    'fellow','female','fence','few','fiction','fierce','fig','figure','filter','final','fine',
+    'finger','finish','firm','fiscal','fish','fist','fit','fitting','fix','fixture','flag','flame',
+    'flee','flew','flight','flip','floral','flower','fluent','flux','fly','flying','foam','fog',
+    'foil','fold','folder','folk','follow','fond','food','fool','foot','forbid','ford','forest',
+    'forget','forgive','fork','formal','format','former','fort','fortune','forum','fossil','foster',
+    'fought','foul','fountain','fragile','frame','freeze','freight','frequent','fresh','friend',
+    'fringe','frozen','fruit','fuel','fun','fund','funeral','funny','fur','furnish','fury','fuse',
+    'future','gain','gallery','gallon','game','gap','garage','garden','garment','gas','gate',
+    'gather','gauge','gaze','gear','gender','gene','gentle','genuine','gesture','giant','gift',
+    'gifted','ginger','girl','glance','global','glory','glow','glue','goal','goat','golden',
+    'gospel','govern','gown','grab','grace','grade','grain','grand','granite','grant','graph',
+    'grasp','grass','grateful','gravel','gravity','gray','grease','greatly','greedy','grid','grim',
+    'grin','grip','grocery','grow','growth','guest','guide','guilty','guitar','gulf','gun','gust',
+    'gut','gym','habit','hale','halt','hammer','handle','hang','happy','harbour','hardly','harm',
+    'harmony','harvest','hat','hate','haul','hawk','hay','hazard','header','heal','healthy','heap',
+    'heaven','heavier','heel','height','helm','helmet','helper','herald','herb','herd','heritage',
+    'hero','hidden','hide','highly','hiking','hinder','hint','hire','hit','hive','hobby','holder',
+    'holiday','hollow','hook','hoop','hop','horizon','hormone','horn','horror','hospital','host',
+    'hostel','hot','hotel','hourly','household','housing','hug','huge','hum','humble','humour',
+    'hung','hunger','hunt','hunter','hurdle','hurl','hurt','husband','hush','hut','hybrid',
+    'hygiene','ice','icon','ideal','identity','idiom','ignore','ill','illness','image','impact',
+    'impair','impose','improve','impulse','inch','income','indeed','index','indoor','induce',
+    'indulge','industry','infant','inflict','inform','inhabit','inherit','initial','injure','ink',
+    'inland','inmate','inn','inner','input','inquire','insect','insert','inside','insight','insist',
+    'inspect','inspire','instant','instinct','insult','intact','intend','intense','intent',
+    'interest','interior','internal','invent','invest','invite','inward','iron','isle','isolate',
+    'issue','item','ivory','jacket','jail','jar','jargon','jaw','jazz','jeopardy','jersey','jet',
+    'jewel','job','jockey','jog','joint','joke','joy','joyful','judge','jump','junior','junk',
+    'justice','justify','keel','keen','keeper','kernel','kettle','key','kick','kid','kindly',
+    'kingdom','kiss','kit','knee','knight','knit','knot','lab','lace','lack','ladder','lake','lamb',
+    'lame','lamp','lane','lap','laptop','largely','lash','lasting','lately','latter','laughter',
+    'launch','laundry','law','lawn','lawyer','lay','layer','leader','leaf','league','leak','lean',
+    'leap','leather','lecture','leg','legacy','legend','legion','leisure','lemon','length','lens',
+    'lesson','letter','liable','liberal','lid','lie','lifted','lighter','likely','limb','lime',
+    'limited','limp','linear','linger','lion','lip','liquid','lit','little','lively','living',
+    'load','loader','loaf','loan','lobby','locate','lock','lode','lodge','loft','log','logical',
+    'logo','lone','lonely','longer','lookout','loop','loosen','lord','lore','lot','lottery','loud',
+    'loudly','love','lovely','low','loyal','luck','lump','lunar','lung','lure','lush','luxury',
+    'mad','magic','magnet','maiden','mail','mailbox','main','mainly','maintain','making','male',
+    'mall','mammal','manage','mane','manner','mansion','manual','map','marble','mare','margin',
+    'marine','mark','marked','market','marriage','martial','marvel','mask','mass','massive',
+    'master','mat','mate','math','matter','mature','maximum','maze','meadow','meal','meat','medal',
+    'media','medical','medium','meet','melody','melt','member','memo','memory','mend','mental',
+    'mentor','menu','merchant','mercy','mere','merely','merger','merit','mesh','mess','messy',
+    'metal','method','middle','midnight','mighty','migrate','mild','mile','mileage','military',
+    'mill','mimic','mineral','minimal','minister','minute','miracle','mirror','misery','mislead',
+    'mission','mist','mix','mixture','moan','mob','mobile','mode','modern','modest','modify',
+    'module','mold','mole','moment','monarch','monitor','monk','monkey','monthly','mood','mop',
+    'moral','morale','mortal','moss','mostly','moth','mother','motion','motive','motor','mount',
+    'mourn','movement','movie','mud','mug','mule','muscle','museum','musical','mute','mutual',
+    'mystery','myth','nail','nap','narrow','nation','native','nature','navy','nearby','nearly',
+    'neat','neatly','neck','needle','negative','neglect','neither','nephew','nerve','nest','net',
+    'network','neutral','newly','news','nice','nicely','nick','nickel','nightly','nimble','nobody',
+    'nod','node','noisy','nominal','nor','norm','normal','nose','notable','notice','notion','nova',
+    'novel','nuclear','numb','number','nurture','nut','oak','oath','obey','object','oblige',
+    'obtain','occupy','occur','offend','office','offset','oil','olive','online','onward','operate',
+    'opinion','oppose','optical','option','orange','orbit','orchard','ordeal','organ','origin',
+    'otherwise','outcome','outdoor','outfit','outlet','outline','output','outrage','outset',
+    'outward','oval','oven','overall','overcome','overlap','oversee','owe','owl','owner','oxygen',
+    'pace','pack','package','packet','pact','paddle','page','pageant','paid','pail','pain',
+    'painful','painter','pair','palace','pale','pallet','palm','pamper','pan','pane','panic',
+    'parade','parcel','pardon','parent','parish','park','parking','parole','partial','partner',
+    'pass','passion','passive','pasture','pat','patch','patent','path','pathway','patience',
+    'patron','paused','pave','pawn','pay','payment','peak','peasant','peat','peculiar','pedal',
+    'peek','peel','peer','pen','penalty','pencil','pending','people','pepper','percent','perform',
+    'perfume','period','permit','person','pet','petrol','phantom','phrase','physical','pianist',
+    'pie','pierce','pig','pigeon','pile','pill','pillar','pillow','pin','pine','pink','pioneer',
+    'pipe','pirate','pistol','pitch','pivot','placid','plague','planet','plaster','plastic',
+    'plateau','platform','played','player','plea','please','pledge','plenty','plot','plug','plunge',
+    'plus','pocket','podium','poem','poetry','poison','police','policy','polish','polite','poll',
+    'pollen','pond','pool','poor','pop','pore','pork','port','portal','portray','pose','position',
+    'positive','possess','possible','post','poster','pot','potato','potent','pottery','poultry',
+    'pounce','pour','powder','praise','pray','prayer','precise','predict','prefer','premier',
+    'premium','prepare','preserve','pressure','presume','pretend','pretty','prevail','prevent',
+    'preview','previous','prey','price','priest','prince','printer','prison','privacy','private',
+    'proceed','product','profile','profit','program','project','promote','prompt','prop','proper',
+    'propose','protein','protest','proven','province','provoke','pry','pub','public','publish',
+    'pudding','pulse','pumpkin','punish','pupil','purchase','pure','purple','pursue','push',
+    'puzzle','qualify','quality','quantum','quarrel','quarry','queen','query','quest','question',
+    'quicken','quilt','quit','quote','rabbit','race','racial','rack','racket','radiant','radical',
+    'raft','rag','rage','raid','rail','railway','rain','rainbow','raised','rake','rally','ram',
+    'ramp','random','ranger','rank','rapid','rare','rarely','rash','rat','rate','rather','rating',
+    'ration','rave','raw','ray','reader','reality','realm','reap','rear','reason','rebel','rebuild',
+    'recall','receipt','recent','recipe','reckon','record','recover','recruit','reduce','reed',
+    'reef','reel','refine','reflect','reform','refuge','refuse','regard','regime','region','regret',
+    'reject','relate','relax','release','relevant','reliable','relief','rely','remain','remark',
+    'remedy','remind','remote','remove','render','renew','rent','rental','repair','repeat',
+    'replace','report','request','rescue','research','reserve','reside','resist','resolve','resort',
+    'resource','respond','restore','restrain','result','resume','retail','retain','retire',
+    'retreat','return','reveal','revenue','reverse','review','revise','reward','rhythm','rib',
+    'ribbon','riddle','ridge','rife','rifle','rift','rigid','rim','ring','rink','riot','rip','ripe',
+    'rise','rising','risk','rite','ritual','rival','roadway','roam','roar','roast','rob','robe',
+    'robust','rocket','rod','roll','roller','romance','roof','rookie','root','rosy','rotate',
+    'rotten','roughly','routine','royalty','rubber','rubbish','ruby','rude','rug','rugged','ruin',
+    'rule','rung','runner','runway','rust','rustic','sack','sacred','sad','saddle','safe','safety',
+    'sage','sail','sailor','sake','salary','sale','salmon','salt','sample','sanction','sand',
+    'sandal','satisfy','sauce','savage','save','saving','scalp','scan','scar','scarce','scatter',
+    'scenic','scheme','scholar','school','science','scissor','scoop','scope','score','scorn',
+    'scout','scrap','screen','script','sculpt','seal','seam','season','seat','second','secret',
+    'section','sector','secure','seed','seek','seem','seen','seldom','select','self','sell','semi',
+    'senate','senior','sensible','sentence','sequel','series','sermon','servant','session','settle',
+    'seventh','several','severe','sew','shadow','shaken','shallow','shame','shared','shelter',
+    'shepherd','sheriff','shield','shifted','shin','shine','shiny','ship','shiver','shock','shoe',
+    'shop','shortage','shoulder','shovel','shower','shrewd','shrink','shrug','shut','shy','sick',
+    'sideways','sighed','signal','silence','silent','silk','sill','silo','silver','simple','simply',
+    'sin','singer','single','sink','sip','sir','sister','site','situate','sixteen','sizable',
+    'sketch','ski','skilled','skinny','skip','slab','slack','slam','slap','slate','slave','sled',
+    'sleeve','slender','slice','slid','slight','slim','slip','slogan','slope','slot','slug','sly',
+    'smooth','smug','snap','soak','soap','sob','soccer','social','sock','socket','sod','soda',
+    'sofa','soft','soften','soil','soldier','sole','solemn','solo','solution','song','sore',
+    'sorrow','sought','soup','sour','source','souvenir','sown','sparkle','speaker','species',
+    'specimen','spectrum','speech','sphere','spider','spin','spirit','splash','splendid','spoken',
+    'sponsor','spot','spouse','spread','spring','sprint','spur','square','squeeze','stab','stable',
+    'stadium','staffer','stagger','stainless','stamina','stamp','stance','standard','staple',
+    'starch','startle','statement','static','statue','status','steady','stealth','stellar','stem',
+    'sticky','stiffen','stir','stitch','stolen','stomach','storage','stormy','strain','strand',
+    'strategy','stream','street','strength','stress','strict','strike','string','stripe','stroke',
+    'strong','struggle','stub','stubborn','stud','studio','stumble','stun','stupid','sturdy',
+    'subdue','submit','subtle','suburb','subway','success','sudden','suffer','sugary','suit',
+    'suitable','sullen','sum','summer','summit','sun','sunk','sunlight','sunny','sunset','superb',
+    'supply','suppress','supreme','surf','surgeon','surplus','surprise','surrender','survey',
+    'survive','suspect','sustain','swallow','swam','swan','swap','sweater','swept','swift','swim',
+    'swollen','symbol','sympathy','symptom','syndrome','system','tab','tablet','tackle','tactic',
+    'tag','tail','talent','talking','tall','tallest','tame','tan','tangle','tank','tap','tape',
+    'target','task','tavern','tax','tea','teaching','team','tear','tedious','teen','temper',
+    'temple','tenant','tend','tender','tennis','tent','tenure','term','terrain','terror','test',
+    'text','thanks','thaw','theory','therapy','thermal','thesis','thicken','thief','thinner',
+    'thirst','thorough','though','thread','threat','thrill','throat','throne','thrust','thunder',
+    'thus','tick','ticket','tidal','tidy','tighten','tile','tilt','timber','timely','timing','tin',
+    'tinted','tiny','tip','tiptoe','tissue','toad','toast','tobacco','toddler','together','toil',
+    'toilet','token','tolerate','toll','tomato','tomb','ton','tone','tongue','tool','toolkit',
+    'topical','torch','torment','tornado','torrent','toss','touching','tough','tourist','toward',
+    'towel','toxic','toy','trace','tracker','tractor','trader','tragedy','trail','trailer',
+    'trainer','traitor','tranquil','transfer','transit','trap','trauma','travel','tray','treason',
+    'treaty','tremble','trench','tribal','tribute','trigger','trillion','trim','trimmed','trip',
+    'triple','triumph','trivial','trod','trophy','tropical','trot','trousers','truly','trumpet',
+    'trusted','truthful','tub','tube','tuck','tug','tuna','tune','tunnel','turbine','turf','turkey',
+    'turmoil','turnout','turtle','twelve','twenty','twig','twilight','twin','twisted','typical',
+    'tyrant','ugly','ultimate','umbrella','unable','uncle','uncover','undergo','underline','undo',
+    'uneasy','unfair','unfold','unhappy','uniform','unique','unite','universe','unknown','unless',
+    'unlike','unlock','unpack','unrest','untidy','upgrade','uphold','upkeep','upland','uplift',
+    'upload','upright','uproar','upset','upstairs','upward','urge','urgency','usage','user',
+    'utility','utmost','vacant','vacuum','vague','vain','vale','valiant','valley','valued','van',
+    'vanish','variant','various','varnish','vase','vast','vector','vehicle','veil','vein','velvet',
+    'vendor','vent','venture','venue','verb','verbal','verdict','verify','version','vessel','vest',
+    'vet','veteran','veto','via','viable','vibrant','vice','vicious','victim','victory','vigour',
+    'villain','vine','vintage','violate','violent','virtual','virtue','visible','vision','visitor',
+    'visual','vivid','vocal','void','volt','volume','vote','vow','voyage','vulgar','wade','wag',
+    'wage','waiter','wake','wand','wander','wanted','ward','warden','wardrobe','ware','warfare',
+    'warmth','warn','warrant','warrior','wart','wash','washing','wasp','watcher','waterway','wave',
+    'wax','weak','wealth','weapon','wearily','weaver','web','weed','week','weekly','weep','weight',
+    'weld','welfare','wept','west','wet','wetland','whale','wheat','whereby','whip','whisper',
+    'whistle','wholly','wick','wicked','widely','widen','widow','width','wield','wife','wig','wild',
+    'wildlife','willow','wilt','window','wine','wing','wink','winner','winter','wipe','wisdom',
+    'wise','wit','wither','within','wizard','wolf','wonder','wood','wooden','wool','woollen',
+    'worker','workshop','worm','worship','wounded','wrap','wrapper','wrestle','wrinkle','writer',
+    'written','yard','yarn','yawn','yearly','yellow','yesterday','yielding','yoga','yourself',
+    'youthful','zeal','zealous','zenith','zero','zip','zone','zoom',
   ];
 
   const TOP200 = new Set([
@@ -636,6 +935,31 @@
   const LEGIBLE = 0.18;
   const SAMPLE_EVERY_MS = 250;
   const SAMPLE_WINDOW = 80;
+  // ---------------------------------------------------------------------------
+  // The self-adjusting demand. DRAFT C ONLY.
+  //
+  // It paces itself off the player's own sustained speed: the target sits below
+  // demonstrated speed so raising it never outruns you, and the value never falls,
+  // so slowing down only ever costs. Two earlier formulations were wrong and are
+  // recorded so they are not reintroduced: a pure clock term left a 100 wpm typist
+  // with 68 seconds of no change and 2:13 of invulnerability; a hard
+  // max(clock, 0.85 * sustained) fixed the opening but froze the demand at 85 for
+  // the 89 seconds the clock needed to overtake it.
+  //
+  // Draft A used to share this and no longer does. The complaint was that the
+  // squeeze arrived far too late - measured, the first unreadable hole landed at
+  // 45-98s - and the cause was structural: the eased term converges to
+  // 0.85 * sustained, while the ink only visibly dries at ratio 1.125 and the hole
+  // only opens at ratio 0.94, both of which are ABOVE where it converges. So the
+  // interesting part of the climb was covered by the 0.5 wpm/s floor alone, which
+  // takes ~0.43 * v seconds - worse the faster you type. Draft A now paces against
+  // a goal the player chose instead (see createPacer below, and
+  // docs/superpowers/specs/2026-10-03-draft-a-pacing.md). Draft C keeps this,
+  // unchanged and still tuned against it: its balance standard is that an adaptive
+  // player out-scores both pure strategies, which tools/sweep-c.js measures, and
+  // retuning the ratchet under draft C moved that margin from 23% to 14%.
+  // ---------------------------------------------------------------------------
+
   const TARGET_FRACTION = 0.85;
   const EASE_PER_SECOND = 0.07;
   const MIN_RISE_PER_SECOND = 0.5;
@@ -661,6 +985,84 @@
     return demand.value;
   }
 
+  // ---------------------------------------------------------------------------
+  // The goal pacer. DRAFT A.
+  //
+  // The player picks a goal wpm off a ladder (or sets one). The demand ramps from
+  // a gentle opening to that goal over RAMP_SECONDS and then HOLDS there forever -
+  // it is a pacer, not a chaser. Everything downstream is untouched: at v == goal
+  // the ink under the caret sits at baseInk(1.0) = 0.30, readable but visibly
+  // drying, and the hole only opens below 0.94 * goal. So "slightly under and you
+  // can barely keep up" falls straight out of the existing curve.
+  //
+  // Why a ramp rather than starting at the goal: rolling wpm means nothing for the
+  // first ten keystrokes (see metrics.isWarm), and a cold page at the goal would
+  // spend strikes before the player had read a word. Why smoothstep rather than
+  // linear: it leaves the opening gentle and lands on the goal without a corner,
+  // so there is no moment where the drying visibly changes rate.
+  //
+  // The value only ever rises - within a level the ramp is monotone, and a level
+  // is only ever stepped UP, from wherever the value had got to.
+  // ---------------------------------------------------------------------------
+
+  const LEVELS = [40, 55, 70, 85, 100, 115, 130, 150, 170, 190];
+  const LEVEL_STEP_ABOVE_LADDER = 20;   // past the ladder's top the goal keeps climbing
+  const RAMP_SECONDS = 10;
+  const OPENING_FRACTION = 0.5;         // the ramp starts here, as a fraction of the goal
+  const HOLD_SECONDS = 10;              // time at or above the goal to have REACHED it
+  const HOLD_RELEASE = 0.97;            // dipping inside this does not reset the hold
+
+  function nextGoal(goal) {
+    for (const l of LEVELS) if (l > goal) return l;
+    return goal + LEVEL_STEP_ABOVE_LADDER;
+  }
+
+  function levelIndexOf(goal) {
+    let i = 0;
+    for (let k = 0; k < LEVELS.length; k++) if (goal >= LEVELS[k]) i = k;
+    return i;
+  }
+
+  function smoothstep(k) { return k * k * (3 - 2 * k); }
+
+  function createPacer(goal) {
+    const g = goal || LEVELS[0];
+    const from = OPENING_FRACTION * g;
+    return {
+      goal: g, startGoal: g, from: from, value: from,
+      rampT: 0, atGoalMs: 0, reached: []
+    };
+  }
+
+  // the demand at this instant, and the hold clock that decides "reached"
+  function stepPacer(pacer, dtSeconds) {
+    pacer.rampT += dtSeconds;
+    const k = clamp(pacer.rampT / RAMP_SECONDS, 0, 1);
+    pacer.value = pacer.from + (pacer.goal - pacer.from) * smoothstep(k);
+    return pacer.value;
+  }
+
+  // Returns true on the keystroke-tick where the goal is reached. Dips shallower
+  // than HOLD_RELEASE pause the hold rather than resetting it, because rolling wpm
+  // over 3s wobbles by a few per cent even for a metronome, and a hold that any
+  // wobble resets is a hold nobody can finish.
+  function holdAtGoal(pacer, v, dtSeconds) {
+    if (v >= pacer.goal) pacer.atGoalMs += dtSeconds * 1000;
+    else if (v < pacer.goal * HOLD_RELEASE) pacer.atGoalMs = 0;
+    return pacer.atGoalMs >= HOLD_SECONDS * 1000;
+  }
+
+  // Reaching a goal does not end the run: the ladder steps up and the ramp starts
+  // again from wherever the demand had got to, so one run can clear several levels
+  // and the mode stays endless.
+  function stepUp(pacer) {
+    pacer.from = pacer.value;
+    pacer.goal = nextGoal(pacer.goal);
+    pacer.rampT = 0;
+    pacer.atGoalMs = 0;
+    return pacer.goal;
+  }
+
   function baseInk(ratio) { return clamp((ratio - 0.85) / 0.50, 0, 1); }
 
   function frontWidth(ratio) { return 0.85 * W * clamp((0.94 - ratio) / 0.40, 0, 1); }
@@ -684,6 +1086,8 @@
 
   const api = {
     W, LEGIBLE, createDemand, sampleSpeed, sustainedOf, stepDemand,
+    LEVELS, RAMP_SECONDS, OPENING_FRACTION, HOLD_SECONDS, HOLD_RELEASE,
+    nextGoal, levelIndexOf, createPacer, stepPacer, holdAtGoal, stepUp,
     baseInk, frontWidth, opacityAt, isBlind, unreadableWidth
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
@@ -696,6 +1100,18 @@
 // Pressure is legibility. The ink dries ahead of your caret at a rate the demand
 // sets; fall below 94% of it and a hole opens in the page. You can only be killed
 // by being wrong about something you could not see.
+//
+// The demand is a GOAL the player chose, not a chaser. It ramps from a gentle
+// opening to that goal over ten seconds and then holds, so the ink is a pacer: at
+// exactly the goal the page is readable but visibly drying, a little under and you
+// are reading from memory. Hold at or above the goal for ten seconds and you have
+// REACHED it - the ladder steps up and the ramp runs again, so one run can clear
+// several levels and the mode stays endless.
+//
+// It used to pace itself off the player's own sustained speed, and the squeeze
+// arrived far too late: measured, the first unreadable hole landed at 45-98s, worse
+// the faster you typed. See docs/superpowers/specs/2026-10-03-draft-a-pacing.md
+// for the autopsy and for the alternatives that were rejected.
 (function (root) {
   'use strict';
 
@@ -711,6 +1127,24 @@
 
   const WARMUP_RATIO = 1.2;   // comfortably legible while the speed tracker fills
 
+  // How fast the ink is allowed to DRY, as a time constant on the ratio.
+  //
+  // Measured problem this fixes: rolling wpm over 3s wobbles by 4-8% even for a
+  // metronome, because the text's hand and finger transitions are not uniform. The
+  // hole opens below 94% of the goal, so a player typing exactly AT their goal was
+  // flickering in and out of blindness several times a minute, and a blind
+  // character is wrong about a third of the time - three strikes arrived in 16-44s.
+  // Typing at your goal has to be sustainable, so the estimator's wobble must not
+  // reach the page.
+  //
+  // Asymmetric on purpose: catching up is instant, because pushing hard has to be
+  // rewarded immediately and a player who speeds up should see the page clear under
+  // their fingers. Falling behind takes DRY_TAU to register, so a 300ms stumble
+  // barely moves the ink while a real slowdown dries it out within a couple of
+  // seconds. It is also the literal reading of the premise: ink takes a moment to
+  // dry. Measured at 1.6s; see docs/.../2026-10-03-draft-a-pacing.md.
+  const DRY_TAU = 1.6;
+
   const META = {
     id: 'a',
     name: 'drying ink',
@@ -725,7 +1159,10 @@
     }
   }
 
-  function createRun(seed) {
+  // opts.goal: the wpm the player is pacing against. Defaults to the bottom of the
+  // ladder, which is also what every caller that does not care about the goal gets.
+  function createRun(seed, opts) {
+    const goal = (opts && opts.goal) || s.LEVELS[0];
     const run = {
       draft: 'a', seed: seed, gen: g.createGenerator(seed),
       text: '', cursor: 0, marks: [], rhythmAt: [],
@@ -733,8 +1170,9 @@
       v: 0, peakV: 0, ratio: 1, rhythm: 50, chapterIndex: 0,
       startedAt: null, lastKeyAt: null, nowMs: 0, intervals: [], blindSince: null,
       ended: false, endReason: null,
-      demand: s.createDemand(), speed: m.createSpeed(), wpmTrace: []
+      demand: s.createPacer(goal), speed: m.createSpeed()
     };
+    run.chapterIndex = g.chapterAt(run.demand.goal);
     topUp(run);
     return run;
   }
@@ -791,19 +1229,29 @@
 
     run.v = m.wpmAt(run.speed, nowMs);
 
+    s.stepPacer(run.demand, dtSeconds);
+
     // Until the speed tracker is warm, rolling wpm is meaningless - it reads near
-    // zero however fast you are going. Pin the ratio somewhere comfortable and
-    // keep the cold-start zeros out of the demand ratchet.
+    // zero however fast you are going, so it would blank the page on keystroke two.
+    // Pin the ratio somewhere comfortable until it means something.
     if (!m.isWarm(run.speed)) {
       run.ratio = WARMUP_RATIO;
-      s.stepDemand(run.demand, dtSeconds);
     } else {
-      s.sampleSpeed(run.demand, run.v, nowMs);
-      s.stepDemand(run.demand, dtSeconds);
-      run.ratio = run.demand.value > 0 ? run.v / run.demand.value : 0;
+      const target = run.demand.value > 0 ? run.v / run.demand.value : 0;
+      run.ratio = target >= run.ratio
+        ? target
+        : run.ratio + (target - run.ratio) * (1 - Math.exp(-dtSeconds / DRY_TAU));
+      if (s.holdAtGoal(run.demand, run.v, dtSeconds)) {
+        run.demand.reached.push({ goal: run.demand.goal, ms: nowMs - run.startedAt });
+        s.stepUp(run.demand);
+      }
     }
 
-    const next = g.chapterAt(run.demand.value);
+    // Chapters key off the GOAL, not the demand, so the texture ladder and the
+    // level ladder line up: clearing a level is also what changes what your hands
+    // are doing. Keying them off the ramping demand instead would walk a player
+    // through three textures in the first ten seconds of every run.
+    const next = g.chapterAt(run.demand.goal);
     if (next > run.chapterIndex) run.chapterIndex = next;
 
     if (s.isBlind(run.ratio)) {
@@ -813,8 +1261,6 @@
       run.blindSince = null;
     }
 
-    run.wpmTrace.push({ t: nowMs - run.startedAt, v: run.v, demand: run.demand.value });
-    if (run.wpmTrace.length > 4000) run.wpmTrace.shift();
   }
 
   // how the renderer should ink the character `d` ahead of the caret
@@ -824,10 +1270,14 @@
     return run.endReason === 'strikes' ? 'three blind guesses' : 'the page dried out';
   }
 
+  function goalOf(run) { return run.demand.goal; }
+  function reachedOf(run) { return run.demand.reached; }
+
   const api = {
     draftA: {
-      META, createRun, onKey, tick, inkAhead, endLabel,
-      MAX_STRIKES, STALL_MS, strikesOf: run => run.strikes, maxStrikes: () => MAX_STRIKES
+      META, createRun, onKey, tick, inkAhead, endLabel, goalOf, reachedOf,
+      LEVELS: s.LEVELS, MAX_STRIKES, STALL_MS,
+      strikesOf: run => run.strikes, maxStrikes: () => MAX_STRIKES
     }
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api.draftA;
@@ -842,6 +1292,10 @@
 // one pays 1.6x but is longer, so taking it costs ground against the chaser. Your
 // fingers choose: the first character you type commits you, because the generator
 // guarantees the two lines diverge on their very first letter.
+//
+// The junction is materialised a WHOLE SEGMENT before the cursor reaches it, and
+// the safe line is provisionally appended to the page as it is. Both of those are
+// load-bearing; see newBranch() and resolve() for why.
 (function (root) {
   'use strict';
 
@@ -901,27 +1355,79 @@
 
   function cps(demandWpm) { return (demandWpm * 5) / 60; }
 
-  function newBranch(run) {
-    const pair = run.gen.branchPair(run.chapterIndex);
-    run.branch = {
-      safeText: pair.safe.join(' ') + ' ',
-      greedyText: pair.greedy.join(' ') + ' ',
-      payout: TUNING.greedyPayout,
-      committed: null
-    };
+  // The least run-up a junction may have, in characters. The run-up IS the segment
+  // you are typing when the junction opens, and in the short-word chapters a
+  // three-word segment is only 11 characters - under a second at 150 wpm, which is
+  // not enough time to read two lines and choose. Short segments are padded with
+  // plain words (no payout, no fork) until the run-up is at least this long.
+  const MIN_RUNUP = 18;
+
+  function appendSegment(run, text, mult) {
+    for (let i = 0; i < text.length; i++) run.payoutAt.push(mult);
+    run.text += text;
   }
 
-  function commit(run, which) {
+  // Opens the NEXT junction, a whole segment ahead of the cursor.
+  //
+  // This is the fix for the flaw the player reported: "it ruins the rhythm since
+  // you have to stop and look at each sentence since they show up only after you
+  // complete the previous one." newBranch() used to be called from onKey the
+  // instant the cursor reached segmentEnd, so the two candidate lines appeared
+  // under your fingers with zero lead - you had to stop, read both, and choose.
+  // The choice is meant to be one you have ALREADY made by the time your fingers
+  // arrive, which means the lines have to be on screen while you finish the
+  // current segment. So: the junction is opened as soon as the previous one is
+  // resolved, which gives a lead of one full segment (18-22 characters, 1.4-2.4s
+  // at 110-200 wpm) and leaves both lines on screen continuously.
+  //
+  // The safe line is also appended to the page immediately, as a PROVISIONAL
+  // continuation. Without that the page simply ends at the junction while you are
+  // still typing toward it - a hole in the line and a dead stop for the eye, which
+  // is the stall this change exists to remove. Reaching for the greedy line
+  // rewrites the page from the junction onward (see resolve), and since nothing
+  // past the junction has been typed yet, nothing typed is ever rewritten.
+  function newBranch(run) {
+    const pair = run.gen.branchPair(run.chapterIndex);
+    const safeText = pair.safe.join(' ') + ' ';
+    run.branch = {
+      safeText: safeText,
+      greedyText: pair.greedy.join(' ') + ' ',
+      payout: TUNING.greedyPayout,
+      at: run.text.length,          // where the junction sits in the page
+      committed: null
+    };
+    appendSegment(run, safeText, 1);
+  }
+
+  // The cursor has arrived at the junction and one key has decided it.
+  function resolve(run, which) {
     const b = run.branch;
-    const chosen = which === 'greedy' ? b.greedyText : b.safeText;
-    const mult = which === 'greedy' ? TUNING.greedyPayout : 1;
     b.committed = which;
+    if (which === 'greedy') {
+      // swap the provisional safe line out for the greedy one. the cursor is
+      // exactly at b.at, so this never touches a character already struck.
+      run.text = run.text.slice(0, b.at);
+      run.payoutAt.length = b.at;
+      appendSegment(run, b.greedyText, TUNING.greedyPayout);
+      run.greedyTaken++;
+    } else {
+      run.safeTaken++;
+    }
     run.segmentGreedy = which === 'greedy';
-    run.segmentStart = run.text.length;
-    run.segmentEnd = run.text.length + chosen.length;
-    for (let i = 0; i < chosen.length; i++) run.payoutAt.push(mult);
-    run.text += chosen;
-    if (which === 'greedy') run.greedyTaken++; else run.safeTaken++;
+    run.segmentStart = b.at;
+    while (run.text.length - b.at < MIN_RUNUP) {
+      appendSegment(run, run.gen.words(run.chapterIndex, 1)[0] + ' ', 1);
+    }
+    run.segmentEnd = run.text.length;
+    newBranch(run);                 // open the next one immediately: read-ahead
+  }
+
+  // true when the next keystroke is the one that commits. Callers that choose a
+  // line (the shell's replay, tools/balance.js, tools/sweep-c.js) ask this rather
+  // than inspecting the branch, because "the junction is open" and "the cursor is
+  // standing on it" are now two different things - which is the whole point.
+  function atJunction(run) {
+    return run.branch !== null && run.branch.committed === null && run.cursor === run.branch.at;
   }
 
   function createRun(seed) {
@@ -935,8 +1441,13 @@
       v: 0, peakV: 0, ratio: 1, rhythm: 50, chapterIndex: 0,
       startedAt: null, lastKeyAt: null, nowMs: 0, intervals: [],
       ended: false, endReason: null,
-      demand: s.createDemand(), speed: m.createSpeed(), wpmTrace: []
+      demand: s.createDemand(), speed: m.createSpeed()
     };
+    // open on a plain committed segment so the FIRST junction has read-ahead too,
+    // rather than greeting the player with a choice on keystroke one.
+    const opening = run.gen.words(0, 3).join(' ') + ' ';
+    appendSegment(run, opening, 1);
+    run.segmentEnd = run.text.length;
     newBranch(run);
     return run;
   }
@@ -951,11 +1462,11 @@
     let chose = null;
     let correct;
 
-    if (run.branch && run.branch.committed === null) {
-      // the junction: one keystroke decides which line you are on
-      if (key === run.branch.safeText[0]) { commit(run, 'safe'); chose = 'safe'; correct = true; }
-      else if (key === run.branch.greedyText[0]) { commit(run, 'greedy'); chose = 'greedy'; correct = true; }
-      else { commit(run, 'safe'); chose = 'safe'; correct = false; }
+    if (atJunction(run)) {
+      // one keystroke decides which line you are on. a wrong key here is an
+      // ordinary error on the line you were already on, not a third outcome.
+      if (key === run.branch.greedyText[0]) { resolve(run, 'greedy'); chose = 'greedy'; correct = true; }
+      else { correct = key === run.text[run.cursor]; resolve(run, 'safe'); chose = 'safe'; }
     } else {
       correct = key === run.text[run.cursor];
     }
@@ -985,8 +1496,6 @@
     } else {
       run.combo = 0;
     }
-
-    if (run.cursor >= run.segmentEnd) newBranch(run);
 
     return { correct: correct, ended: run.ended, chose: chose };
   }
@@ -1027,8 +1536,6 @@
       if (run.touches >= MAX_TOUCHES) endRun(run, 'caught');
     }
 
-    run.wpmTrace.push({ t: nowMs - run.startedAt, v: run.v, demand: run.demand.value });
-    if (run.wpmTrace.length > 4000) run.wpmTrace.shift();
   }
 
   function gapOf(run) { return run.cursor - run.edge; }
@@ -1037,7 +1544,7 @@
 
   const api = {
     draftC: {
-      META, createRun, onKey, tick, inkAhead, endLabel, gapOf,
+      META, createRun, onKey, tick, inkAhead, endLabel, gapOf, atJunction,
       MAX_TOUCHES, START_LEAD, MAX_GAP, TUNING, EDGE_IDLE_MULT,
       strikesOf: run => run.touches, maxStrikes: () => MAX_TOUCHES
     }
@@ -1051,15 +1558,70 @@
 (function (root) {
   'use strict';
 
-  // 200 px/s. At 0.09 the ticks sat ~6px apart at 160 wpm and read as a texture
+  // ---------------------------------------------------------------------------
+  // The rhythm rail. One mark per keystroke on a leftward-scrolling time axis.
+  //
+  // Three treatments were considered; this is the third.
+  //
+  //   1. REJECTED - the original comb: uniform 1px x 13px ticks centred on a
+  //      hairline baseline, whole-rail opacity driven by rhythm. Spacing was the
+  //      only signal, and spacing alone is the hardest thing in the world to read
+  //      at a glance: at 180 wpm the ticks sit ~13px apart and the eye sees an
+  //      even grey texture whether or not the run was even. The baseline ran
+  //      through the ticks' middles, so it crossed every mark and read as noise.
+  //
+  //   2. REJECTED - an interval plot: a filled step/area shape whose height is
+  //      each interval's duration. Legible, but it stops being one-mark-per-
+  //      keystroke and becomes a chart, and a chart of a noisy signal is a
+  //      decorative squiggle. Also it never rests: even perfect typing draws a
+  //      wobbling band, which contradicts "playing well makes the page calm".
+  //
+  //   3. CHOSEN - deviation marks hanging from a ruled line. The rule sits at the
+  //      top of the rail, so it reads as an underline of the text above it, and
+  //      every mark hangs down from it. A mark's LENGTH encodes how far that
+  //      keystroke's interval deviated from the local median - the same window
+  //      the rhythm metric scores (metrics.js, 16 intervals). An even run draws a
+  //      row of identical short stubs, a flat dotted edge under the line. A
+  //      lurching run draws spikes exactly where the lurches were. Unevenness
+  //      becomes a silhouette you can read in one glance instead of a spacing
+  //      judgement, and the shared top edge gives every length the same baseline
+  //      to be compared against, which centring would not.
+  //
+  //      Marks are 2px so they hold at 180 wpm, and fade with age toward the left
+  //      so the newest few hundred milliseconds are the darkest thing in the rail
+  //      and old marks leave without popping out of existence. A gentle global
+  //      rhythm term remains, so a steady run reads darker overall - but rhythm's
+  //      real expression is now the shape, not the ink.
+  //
+  // No red here: the rail never signals an error. Red stays reserved.
+  // ---------------------------------------------------------------------------
+
+  // 200 px/s. At 0.09 the marks sat ~6px apart at 160 wpm and read as a texture
   // rather than a cadence; this shows roughly the last six seconds, legibly.
   const PX_PER_MS = 0.2;
   const CAPACITY = 500;
-  const TICK_H = 13;
+  const WINDOW = 16;          // same interval window the rhythm metric uses
+  const CLAMP_MS = 600;       // same per-interval clamp as the rhythm metric
+  const STUB = 4;             // a keystroke bang on the local median
+  const SPIKE = 17;           // a keystroke a full median late (or early)
+  // |d/m - 1| at which a mark reaches full length. 0.35 is not a free parameter:
+  // it is the same cv the rhythm metric saturates at (metrics.js clamps cv/0.35),
+  // so a run that scores rhythm 0 is exactly a run whose rail is all spikes. At
+  // the 0.9 first tried, +-15% jitter - which scores rhythm 74 - drew a mean mark
+  // of 5.0px against the 4px stub, i.e. nothing you could see.
+  const SPREAD = 0.35;
+
+  function median(sorted) {
+    const n = sorted.length;
+    if (!n) return 0;
+    const h = n >> 1;
+    return n % 2 ? sorted[h] : (sorted[h - 1] + sorted[h]) / 2;
+  }
 
   function createRail(canvas) {
     const ctx = canvas.getContext('2d');
-    const times = [];
+    const marks = [];           // { t, dev } - dev in 0..1, computed once at mark()
+    const intervals = [];       // trailing WINDOW intervals, for the local median
     let w = 0, h = 0, ink = '#17171a', rule = '#e6e2d7';
 
     function readColours() {
@@ -1078,38 +1640,78 @@
       readColours();
     }
 
+    // Deviation is resolved here, not in draw(): it needs a median over a 16-wide
+    // window, and doing that for ~400 visible marks every frame would be 6400
+    // comparisons a frame for a number that can never change once written.
     function mark(nowMs) {
-      times.push(nowMs);
-      if (times.length > CAPACITY) times.shift();
+      let dev = 0;
+      if (marks.length) {
+        const d = Math.min(CLAMP_MS, Math.max(0, nowMs - marks[marks.length - 1].t));
+        intervals.push(d);
+        if (intervals.length > WINDOW) intervals.shift();
+        // Below four intervals there is no meaningful "local median" yet, so the
+        // opening keystrokes draw as even rather than as wild spikes.
+        if (intervals.length >= 4) {
+          const m = median(intervals.slice().sort((a, b) => a - b));
+          if (m > 0) dev = Math.min(1, Math.abs(d / m - 1) / SPREAD);
+        }
+      }
+      marks.push({ t: nowMs, dev: dev });
+      if (marks.length > CAPACITY) marks.shift();
+    }
+
+    // Reading canvas.clientWidth every frame to spot a size change forces a
+    // synchronous layout, and it lands immediately after the renderer has dirtied
+    // its span window - the worst possible moment. A ResizeObserver delivers the
+    // same information only when the size actually changes, including the moment
+    // a canvas created inside a display:none section first gets a size, which is
+    // the case that made the rail silently never paint at all.
+    let dirty = true;
+    if (typeof ResizeObserver === 'function') {
+      new ResizeObserver(function () { dirty = true; }).observe(canvas);
     }
 
     function draw(nowMs, rhythm) {
-      // A canvas created while its section is display:none measures 0x0 and never
-      // paints. Re-measure whenever the layout width has moved out from under us.
-      if (!w || Math.abs(canvas.clientWidth - w) > 0.5) resize();
+      if (dirty || !w) {
+        resize();
+        dirty = false;
+        if (typeof ResizeObserver !== 'function' && Math.abs(canvas.clientWidth - w) > 0.5) {
+          resize();   // no observer: fall back to measuring each frame
+        }
+      }
       if (!w) return;
       ctx.clearRect(0, 0, w, h);
 
-      const mid = Math.round(h / 2);
+      // The ruled line the marks hang from. It is the shared edge that makes the
+      // lengths comparable, which is why it is at the top and not through them.
+      ctx.globalAlpha = 1;
       ctx.fillStyle = rule;
-      ctx.fillRect(0, mid, w, 1);
+      ctx.fillRect(0, 0, w, 1);
 
+      const steady = 0.55 + 0.45 * Math.max(0, Math.min(100, rhythm || 0)) / 100;
+      const top = 2;
       ctx.fillStyle = ink;
-      ctx.globalAlpha = 0.3 + 0.55 * (rhythm / 100);
-      const top = Math.round((h - TICK_H) / 2);
-      for (let i = times.length - 1; i >= 0; i--) {
-        const x = w - (nowMs - times[i]) * PX_PER_MS;
+      for (let i = marks.length - 1; i >= 0; i--) {
+        const x = w - (nowMs - marks[i].t) * PX_PER_MS;
         if (x < -2) break;
         if (x > w) continue;
-        ctx.fillRect(Math.round(x), top, 1, TICK_H);
+        const age = Math.pow(Math.max(0, x) / w, 0.8);      // newest = darkest
+        ctx.globalAlpha = steady * (0.15 + 0.85 * age);
+        const len = STUB + (SPIKE - STUB) * marks[i].dev;
+        ctx.fillRect(Math.round(x) - 1, top, 2, Math.min(len, h - top));
       }
       ctx.globalAlpha = 1;
     }
 
-    function reset() { times.length = 0; }
+    function reset() { marks.length = 0; intervals.length = 0; }
 
     resize();
-    return { resize: resize, mark: mark, draw: draw, reset: reset };
+    return {
+      resize: resize, mark: mark, draw: draw, reset: reset,
+      readColours: readColours,
+      // test seam: the drawn shape is entirely a function of these
+      _marks: marks
+    };
   }
 
   const api = { createRail };
@@ -1124,15 +1726,65 @@
 
   const WINDOW_BEHIND = 70;
   const WINDOW_AHEAD = 110;
+  const WINDOW = WINDOW_BEHIND + WINDOW_AHEAD;   // the span pool, 180 wide
   const SCROLL_K = 14;      // spring constants: scroll tracks tightly,
   const CARET_K = 9;        // the caret lags a little, deliberately
+
+  // ---------------------------------------------------------------------------
+  // Why the spans are a ring buffer at absolute positions.
+  //
+  // Two earlier arrangements both made the run go choppy, and both are recorded
+  // here so neither comes back.
+  //
+  // 1. `first = cursor - WINDOW_BEHIND`, span `i` holding character `first + i`.
+  //    The scroll target `-(cursor - first) * cw` is then a CONSTANT, so past
+  //    character 70 the springs settled to zero error and the text stopped
+  //    sliding altogether - it advanced by swapping glyph contents, one whole
+  //    character per keystroke. Character-quantised scrolling is literally what
+  //    choppiness is, and it began about four seconds in at 200 wpm. It also
+  //    rewrote all 180 spans and all 180 caret twins on every frame the cursor
+  //    moved: 360 text-node writes a frame.
+  //
+  // 2. Quantising `first` to a multiple of 24. That restored the sliding and cut
+  //    the MEAN write rate by 24x, but it moved the cost into a burst: every 24
+  //    characters the whole window was rewritten at once. Measured, that is a
+  //    433-write frame against a 45-write mean - a 10x spike roughly every two
+  //    seconds at 120 wpm, which is a periodic hitch rather than a smooth run.
+  //
+  // So: a span's slot is `idx % WINDOW` and its `left` is `idx * charWidth`,
+  // both fixed for the life of that character. A character entering the window
+  // writes one span and nothing else touches the DOM. There is no rebase, so
+  // there is no burst, and the write rate is flat at about one per keystroke for
+  // the whole run however long it goes.
+  //
+  // Positions grow without bound (a 10-minute run at 200 wpm reaches ~177,000px)
+  // which is comfortably inside float precision, so no origin shifting is needed.
+  // ---------------------------------------------------------------------------
+
+  // The caret twin. Each keystroke lights the characters just ahead of the caret
+  // and the glow decays, so sustained typing keeps the page lit and stopping lets
+  // it go out. This is deliberately PRESENTATION ONLY: it is added on top of the
+  // opacity the survival model computed and never feeds back into `isBlind`, so
+  // it cannot change who lives or dies. PULSE_MAX is kept under the 0.18
+  // legibility threshold so a genuinely dark character can never be lit into a
+  // readable one - the race it creates is real, not cosmetic relief from it.
+  const PULSE_GAIN = 0.5;    // added to the pulse per character typed
+  const PULSE_TAU = 0.26;    // seconds to decay by 1/e
+  const PULSE_MAX = 0.12;    // most opacity a keystroke can lend
+  const PULSE_REACH = 12;    // characters ahead that it reaches
+
+  const TWIN_BEHIND = 4;     // characters of twin kept left of the caret
+  const TWIN_SPAN = 14;      // total characters in the twin string
 
   function createRenderer(els) {
     const st = {
       charWidth: 0,
-      x: 0, caretX: 0,       // continuous floats, never character indices
-      spans: [], twins: [],
-      first: -1
+      x: 0, caretX: 0,         // continuous floats, never character indices
+      spans: [],
+      pulse: 0,
+      lastCursor: -1,
+      twinFirst: -1,
+      twinText: null
     };
 
     function measure() {
@@ -1147,76 +1799,129 @@
       document.body.appendChild(probe);
       st.charWidth = probe.getBoundingClientRect().width / 10;
       probe.remove();
+
+      // Absolutely positioned children give the line no height of its own, which
+      // would break the `translateY(-50%)` that centres it. Pin it to one line.
+      els.line.style.height = cs.fontSize;
+
+      // every span's left is charWidth-derived, so they all have to be re-placed
+      for (const sp of st.spans) sp.__idx = -1;
       return st.charWidth;
     }
 
-    function ensure(host, bank, count) {
-      while (bank.length < count) {
+    function build() {
+      while (st.spans.length < WINDOW) {
         const sp = document.createElement('span');
-        host.appendChild(sp);
-        bank.push(sp);
-      }
-      for (let i = count; i < bank.length; i++) {
-        if (bank[i].textContent !== '') bank[i].textContent = '';
+        sp.style.position = 'absolute';
+        sp.style.top = '0';
+        sp.__idx = -1;
+        sp.__cls = null;
+        sp.__op = null;
+        els.line.appendChild(sp);
+        st.spans.push(sp);
       }
     }
 
     function draw(run, draft, dt) {
       if (!st.charWidth) measure();
+      build();
       const cw = st.charWidth;
+      const cursor = run.cursor;
 
-      const first = Math.max(0, run.cursor - WINDOW_BEHIND);
-      const last = Math.min(run.text.length, run.cursor + WINDOW_AHEAD);
-      const count = last - first;
+      // --- the typing pulse ---------------------------------------------------
+      if (st.lastCursor >= 0 && cursor > st.lastCursor) {
+        st.pulse = Math.min(1, st.pulse + PULSE_GAIN * (cursor - st.lastCursor));
+      }
+      st.lastCursor = cursor;
+      if (st.pulse > 0) {
+        st.pulse *= Math.exp(-dt / PULSE_TAU);
+        if (st.pulse < 0.002) st.pulse = 0;
+      }
 
-      ensure(els.line, st.spans, count);
-      ensure(els.caretLine, st.twins, count);
-
+      const first = Math.max(0, cursor - WINDOW_BEHIND);
+      const last = Math.min(run.text.length, first + WINDOW);
       const isC = run.draft === 'c';
 
-      for (let i = 0; i < count; i++) {
-        const idx = first + i;
-        const ch = run.text[idx];
-        const span = st.spans[i];
-        const twin = st.twins[i];
+      for (let idx = first; idx < first + WINDOW; idx++) {
+        const span = st.spans[idx % WINDOW];
 
-        if (span.textContent !== ch) { span.textContent = ch; twin.textContent = ch; }
+        // This slot is being recycled for a new character: the only moment it
+        // needs its text and its position written.
+        if (span.__idx !== idx) {
+          span.__idx = idx;
+          span.textContent = idx < last ? run.text[idx] : '';
+          span.style.left = (idx * cw).toFixed(1) + 'px';
+          span.__cls = null;
+          span.__op = null;
+        } else if (idx < last && span.textContent === '') {
+          // the text caught up to a slot we blanked earlier (draft C commits its
+          // branch text only once you choose a line)
+          span.textContent = run.text[idx];
+        }
+
+        if (idx >= last) {
+          if (span.__cls !== '') { span.className = ''; span.__cls = ''; }
+          if (span.__op !== '') { span.style.opacity = ''; span.__op = ''; }
+          continue;
+        }
 
         let cls = '';
         let op = 1;
 
-        if (idx < run.cursor) {
+        if (idx < cursor) {
           const mark = run.marks[idx];
           cls = mark === 'err' ? 'err' : mark === 'miss' ? 'miss' : 'done';
         } else {
-          op = draft.inkAhead(run, idx - run.cursor);
+          const d = idx - cursor;
+          op = draft.inkAhead(run, d);
+          if (st.pulse > 0 && d < PULSE_REACH) {
+            op = Math.min(1, op + PULSE_MAX * st.pulse * (1 - d / PULSE_REACH));
+          }
         }
 
         // draft C: the edge has consumed everything behind it
         if (isC && idx < run.edge) { op = 0; cls = 'miss'; }
 
-        if (span.className !== cls) span.className = cls;
+        if (span.__cls !== cls) { span.className = cls; span.__cls = cls; }
         const o = op >= 1 ? '' : op.toFixed(3);
-        if (span.style.opacity !== o) span.style.opacity = o;
+        if (span.__op !== o) { span.style.opacity = o; span.__op = o; }
       }
 
-      // springs - continuous float positions
-      const target = -(run.cursor - first) * cw;
+      // --- springs: continuous float positions ---------------------------------
+      const target = -cursor * cw;
       st.x += (target - st.x) * (1 - Math.exp(-SCROLL_K * dt));
       st.caretX += (target - st.caretX) * (1 - Math.exp(-CARET_K * dt));
 
       els.line.style.transform = 'translate(' + st.x.toFixed(2) + 'px, -50%)';
-      els.caretLine.style.transform = 'translate(' + st.caretX.toFixed(2) + 'px, -50%)';
       els.caret.style.transform = 'translateX(' + (st.caretX - target).toFixed(2) + 'px)';
 
-      st.first = first;
+      // --- the caret twin ------------------------------------------------------
+      // Only one character is ever visible through the caret's 1ch window, so the
+      // twin is a short substring rather than a second 180-span line. That alone
+      // removed half of the old per-frame write load. It stays registered with the
+      // MAIN line, not with the caret, so the block reads as a window onto the
+      // text rather than a box carrying a glyph around.
+      const twinFirst = Math.max(0, cursor - TWIN_BEHIND);
+      if (twinFirst !== st.twinFirst || st.twinText === null) {
+        st.twinFirst = twinFirst;
+        st.twinText = run.text.substr(twinFirst, TWIN_SPAN);
+        els.caretLine.textContent = st.twinText;
+      }
+      const twinShift = (twinFirst - cursor) * cw + (st.x - st.caretX);
+      els.caretLine.style.transform = 'translate(' + twinShift.toFixed(2) + 'px, -50%)';
+
       return { charWidth: cw, first: first, scrollX: st.x, caretOffset: st.caretX - target };
     }
 
     function reset() {
-      st.x = 0; st.caretX = 0; st.first = -1;
-      for (const sp of st.spans) { sp.textContent = ''; sp.className = ''; sp.style.opacity = ''; }
-      for (const sp of st.twins) sp.textContent = '';
+      st.x = 0; st.caretX = 0;
+      st.pulse = 0; st.lastCursor = -1;
+      st.twinFirst = -1; st.twinText = null;
+      for (const sp of st.spans) {
+        sp.__idx = -1; sp.__cls = null; sp.__op = null;
+        sp.textContent = ''; sp.className = ''; sp.style.opacity = '';
+      }
+      els.caretLine.textContent = '';
     }
 
     return {
@@ -1337,9 +2042,99 @@
     return html;
   }
 
+  // ---------------------------------------------------------------------------
+  // The result screen: minimal by default.
+  //
+  // What stays visible is what you want in the first half second after a run
+  // ends - how long you lasted, what you scored, and whether that beat you. Every
+  // other number is a thing you go and look at, so it lives behind one control in
+  // the hint row, phrased like the other hints rather than built as a button.
+  //
+  // shell.js owns the markup written into #result-sheet and cannot be edited from
+  // here, so this restructures what it finds instead of replacing it: the stats
+  // row and the ink reprint are moved into a .more wrapper that CSS hides until
+  // the sheet carries .is-open. Idempotent - re-running it on an already-enhanced
+  // sheet is a no-op, which is what makes it safe to drive from a MutationObserver.
+  // ---------------------------------------------------------------------------
+
+  const DETAIL_PARTS = ['.stats', '#page-print'];
+
+  function resultOpen(sheet) {
+    return !!sheet && sheet.className.indexOf('is-open') >= 0;
+  }
+
+  function setResultOpen(sheet, open) {
+    if (!sheet) return false;
+    sheet.classList[open ? 'add' : 'remove']('is-open');
+    const ctl = sheet.querySelector('.expand');
+    // The label names what the control will do next, not what state you are in.
+    if (ctl) ctl.innerHTML = '<b>' + (open ? '&#8593;' : '&#8595;') + '</b> ' +
+      (open ? 'hide stats' : 'all stats');
+    return !!open;
+  }
+
+  function enhanceResult(sheet) {
+    if (!sheet || sheet.querySelector('.expand')) return null;
+    const hint = sheet.querySelector('.hint');
+    if (!hint) return null;
+
+    const more = document.createElement('div');
+    more.className = 'more';
+    for (const sel of DETAIL_PARTS) {
+      const el = sheet.querySelector(sel);
+      if (el) more.appendChild(el);          // appendChild moves, it does not copy
+    }
+    sheet.insertBefore(more, hint);
+
+    const ctl = document.createElement('span');
+    ctl.className = 'expand';
+    ctl.setAttribute('role', 'button');
+    ctl.tabIndex = 0;
+    hint.insertBefore(ctl, hint.firstChild);
+    ctl.addEventListener('click', () => setResultOpen(sheet, !resultOpen(sheet)));
+
+    setResultOpen(sheet, false);             // every run starts collapsed
+    return ctl;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Theme. The palette is CSS custom properties on :root, so the whole of dark
+  // mode is one attribute on <html>. resolveTheme is kept pure and separate so
+  // the first-visit rule can be tested without a browser; the identical two lines
+  // are also inlined in <head> so the choice lands before the first paint.
+  // ---------------------------------------------------------------------------
+
+  const THEME_KEY = 'cadence.theme';
+
+  function resolveTheme(stored, prefersDark) {
+    if (stored === 'light' || stored === 'dark') return stored;
+    return prefersDark ? 'dark' : 'light';
+  }
+
+  function storedTheme() {
+    try { return localStorage.getItem(THEME_KEY); } catch (e) { return null; }
+  }
+
+  function currentTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  }
+
+  function applyTheme(theme) {
+    const v = theme === 'dark' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', v);
+    try { localStorage.setItem(THEME_KEY, v); } catch (e) { /* private mode */ }
+    return v;
+  }
+
+  function toggleTheme() {
+    return applyTheme(currentTheme() === 'dark' ? 'light' : 'dark');
+  }
+
   const api = {
     KEY, DRAFT_IDS, loadRecords, saveRecords, recordRun, summarise,
-    formatDuration, scoreLine, inkTrace, renderPage
+    formatDuration, scoreLine, inkTrace, renderPage,
+    enhanceResult, setResultOpen, resultOpen,
+    THEME_KEY, resolveTheme, storedTheme, currentTheme, applyTheme, toggleTheme
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.cadenceScreens = Object.assign(root.cadenceScreens || {}, api);
@@ -1361,11 +2156,98 @@
   // room for the edge. A and B show the page ahead, so theirs sits left.
   const CARET_X = { a: 0.34, c: 0.62 };
 
+  // ---------------------------------------------------------------------------
+  // The goal ladder - draft A.
+  //
+  // Draft A paces the drying ink against a goal wpm the player picked, so the goal
+  // has to be chosen before the run and remembered between them. Cleared rungs live
+  // under their own localStorage key rather than in cadenceScreens' records: that
+  // module owns per-draft bests and its schema is not mine to change, and this is a
+  // different kind of thing anyway - progression rather than a record.
+  // ---------------------------------------------------------------------------
+
+  const LEVELS = c.LEVELS;
+  const GOAL_KEY = 'cadence.goal.v1';
+  const CUSTOM_STEP = 5;              // shift+arrow sets a goal off the ladder
+
+  function loadGoalState() {
+    const blank = { goal: LEVELS[0], cleared: [], best: null };
+    let raw = null;
+    try { raw = localStorage.getItem(GOAL_KEY); } catch (e) { return blank; }
+    if (!raw) return blank;
+    let p;
+    try { p = JSON.parse(raw); } catch (e) { return blank; }
+    if (!p || typeof p !== 'object') return blank;
+    return {
+      goal: typeof p.goal === 'number' && p.goal > 0 ? Math.round(p.goal) : blank.goal,
+      cleared: Array.isArray(p.cleared) ? p.cleared.filter(n => typeof n === 'number') : [],
+      best: p.best && typeof p.best.goal === 'number' ? p.best : null
+    };
+  }
+
+  function saveGoalState() {
+    try { localStorage.setItem(GOAL_KEY, JSON.stringify(app.goals)); } catch (e) { /* ignore */ }
+  }
+
+  // every goal the run held for ten seconds counts as cleared, ladder rung or not
+  function bankGoals(run) {
+    const reached = c.draftA.reachedOf(run);
+    if (!reached.length) return false;
+    let changed = false;
+    for (const r of reached) {
+      if (app.goals.cleared.indexOf(r.goal) < 0) { app.goals.cleared.push(r.goal); changed = true; }
+    }
+    const top = reached[reached.length - 1];
+    if (!app.goals.best || top.goal > app.goals.best.goal) {
+      app.goals.best = { goal: top.goal, ms: top.ms };
+      changed = true;
+    }
+    if (changed) { app.goals.cleared.sort((a, b) => a - b); saveGoalState(); }
+    return changed;
+  }
+
+  function setGoal(goal) {
+    app.goals.goal = Math.max(20, Math.min(400, Math.round(goal)));
+    saveGoalState();
+    renderLevels();
+  }
+
+  function stepGoal(dir, fine) {
+    const g = app.goals.goal;
+    if (fine) return setGoal(g + dir * CUSTOM_STEP);
+    if (dir > 0) return setGoal(c.nextGoal(g));
+    let prev = LEVELS[0];
+    for (const l of LEVELS) if (l < g) prev = l;
+    setGoal(prev);
+  }
+
+  function renderLevels() {
+    const g = app.goals.goal;
+    const rungs = LEVELS.slice();
+    if (rungs.indexOf(g) < 0) rungs.push(g);          // a custom goal shows as a rung
+    rungs.sort((a, b) => a - b);
+    els['level-list'].innerHTML = rungs.map(l =>
+      '<span class="rung' + (l === g ? ' sel' : '') +
+      (app.goals.cleared.indexOf(l) >= 0 ? ' cleared' : '') +
+      '" data-goal="' + l + '">' + l + '</span>').join(' ');
+    for (const r of els['level-list'].children) {
+      r.addEventListener('click', () => setGoal(Number(r.dataset.goal)));
+    }
+    const best = app.goals.best;
+    els['goal-note'].innerHTML = best
+      ? 'best reached <b>' + best.goal + '</b> in ' + (best.ms / 1000).toFixed(0) + 's'
+      : 'hold the goal for ten seconds to reach it';
+    // the ladder is draft A's pacer; draft C paces itself off your own speed
+    els['goal-row'].style.display = app.draftId === 'a' ? 'flex' : 'none';
+  }
+
   const els = {};
-  const app = { draftId: 'a', run: null, renderer: null, rail: null, screen: 'title', last: 0 };
+  const app = { draftId: 'a', run: null, renderer: null, rail: null, screen: 'title', last: 0,
+    goals: null };
 
   function grab() {
     const ids = ['screen-title', 'screen-run', 'screen-result', 'draft-list',
+      'goal-row', 'level-list', 'goal-note', 'hud-goal', 'hud-goal-label', 'hud-goal-wrap',
       'hud-score', 'hud-wpm', 'hud-demand', 'hud-rhythm', 'hud-chapter', 'hud-chapter-label',
       'strikes', 'strike-label', 'stage', 'track', 'line', 'caret', 'caret-line',
       'edge', 'branch-safe', 'branch-greedy', 'rail',
@@ -1399,12 +2281,14 @@
     for (const row of els['draft-list'].children) {
       row.addEventListener('click', () => { app.draftId = row.dataset.id; renderTitle(); startRun(); });
     }
+    renderLevels();
   }
 
   // ---------------- run ----------------
 
   function startRun() {
-    app.run = DRAFTS[app.draftId].createRun((Math.random() * 0x7fffffff) | 0);
+    app.run = DRAFTS[app.draftId].createRun((Math.random() * 0x7fffffff) | 0,
+      { goal: app.goals.goal });
     app.renderer.reset();
     app.rail.reset();
     app.last = performance.now();
@@ -1414,6 +2298,7 @@
     const showBranch = app.draftId === 'c' ? 'block' : 'none';
     els['branch-safe'].style.display = showBranch;
     els['branch-greedy'].style.display = showBranch;
+    els['hud-goal-wrap'].style.display = app.draftId === 'a' ? 'block' : 'none';
     show('run');
     app.rail.resize();            // the canvas is only measurable once visible
     app.renderer.measure();
@@ -1421,18 +2306,31 @@
 
   function finishRun() {
     const run = app.run;
+    if (run.draft === 'a') bankGoals(run);
     run.ms = c.elapsedMs(run);
     run.wpm = run.ms ? (run.correct / 5) / (run.ms / 60000) : 0;
     showResult(run);
+    // Split the sheet into its minimal and expanded halves straight away. This
+    // used to be driven by a MutationObserver because the file was owned
+    // elsewhere; a direct call is synchronous with the render instead of a
+    // microtask behind it, so the sheet is never briefly shown fully expanded.
+    if (root.cadenceScreens.enhanceResult) root.cadenceScreens.enhanceResult(els['result-sheet']);
     show('result');
   }
 
+  // Reading the stage's geometry every frame forces a synchronous layout, and it
+  // lands right after the renderer has dirtied its span window. The width only
+  // changes on resize and on a font load, both of which already call remeasure().
+  let stageWidth = 0;
+  function invalidateStageWidth() { stageWidth = 0; }
   function caretScreenX() {
-    return els['stage'].getBoundingClientRect().width * CARET_X[app.draftId];
+    if (!stageWidth) stageWidth = els['stage'].getBoundingClientRect().width;
+    return stageWidth * CARET_X[app.draftId];
   }
 
   function applyCaretX(draftId) {
     document.documentElement.style.setProperty('--caret-x', (CARET_X[draftId] * 100) + '%');
+    invalidateStageWidth();
   }
 
   function drawOverlays(run, info, now) {
@@ -1444,15 +2342,31 @@
       const edgeX = baseX + (run.edge - run.cursor) * cw;
       els['edge'].style.left = Math.max(-40, edgeX).toFixed(1) + 'px';
 
+      // The fork, drawn AT the junction rather than at the caret.
+      //
+      // The junction is open a whole segment early (see draft-c.js newBranch) and
+      // the safe line is already on the page as a provisional continuation, so the
+      // main line carries it inline and needs no overlay: what the overlay has to
+      // show is the line you would have to reach for. Drawing it at the junction's
+      // own x - not at the caret - is what lets you read it while you finish the
+      // current segment, which is the whole fix. #branch-safe carries the x1 tag,
+      // so the fork point is marked on the line you are on as well.
       const b = run.branch;
       if (b && b.committed === null) {
-        els['branch-safe'].style.left = baseX.toFixed(1) + 'px';
-        els['branch-greedy'].style.left = baseX.toFixed(1) + 'px';
-        els['branch-safe'].innerHTML = b.safeText + '<span class="tag">  &times;1</span>';
-        els['branch-greedy'].innerHTML = b.greedyText +
-          '<span class="tag">  &times;' + DRAFTS.c.TUNING.greedyPayout + '  edge faster</span>';
-        els['branch-safe'].style.opacity = '1';
-        els['branch-greedy'].style.opacity = '1';
+        const forkX = baseX + (b.at - run.cursor) * cw;
+        els['branch-safe'].style.left = forkX.toFixed(1) + 'px';
+        els['branch-greedy'].style.left = forkX.toFixed(1) + 'px';
+        if (els['branch-greedy'].dataset.at !== String(b.at)) {
+          els['branch-greedy'].dataset.at = String(b.at);
+          els['branch-safe'].innerHTML = '<span class="tag">&times;1</span>';
+          els['branch-greedy'].innerHTML = b.greedyText +
+            '<span class="tag">  &times;' + DRAFTS.c.TUNING.greedyPayout + '  edge faster</span>';
+        }
+        // the closer the junction, the stronger the fork reads
+        const away = Math.max(0, b.at - run.cursor);
+        const near = Math.max(0.35, Math.min(1, 1.15 - away / 40));
+        els['branch-safe'].style.opacity = near.toFixed(2);
+        els['branch-greedy'].style.opacity = near.toFixed(2);
       } else {
         els['branch-safe'].style.opacity = '0';
         els['branch-greedy'].style.opacity = '0';
@@ -1466,6 +2380,19 @@
     els['hud-wpm'].textContent = Math.round(run.v);
     els['hud-demand'].textContent = Math.round(run.demand.value);
     els['hud-rhythm'].textContent = Math.round(run.rhythm);
+
+    if (run.draft === 'a') {
+      // the goal, and how much of the ten-second hold is banked. the label carries
+      // the progress rather than a second meter: a bar for a number this small is
+      // more furniture than information.
+      const held = run.demand.atGoalMs / 1000;
+      const cleared = run.demand.reached.length;
+      els['hud-goal'].textContent = Math.round(run.demand.goal);
+      const label = held >= 0.4
+        ? 'holding ' + held.toFixed(0) + '/' + c.HOLD_SECONDS
+        : (cleared ? cleared + ' cleared' : 'goal');
+      if (els['hud-goal-label'].textContent !== label) els['hud-goal-label'].textContent = label;
+    }
 
     const ch = c.CHAPTERS[run.chapterIndex];
     els['hud-chapter'].textContent = ch.name;
@@ -1507,9 +2434,12 @@
     const fell = S.recordRun(app.draftId, run);
     const chapter = c.CHAPTERS[s.chapterIndex];
 
+    const reached = run.draft === 'a' ? c.draftA.reachedOf(run) : [];
     const extra = run.draft === 'c'
       ? stat('safe', run.safeTaken) + stat('greedy', run.greedyTaken)
-      : stat('best combo', run.maxCombo);
+      : stat('goal', reached.length ? reached[reached.length - 1].goal : run.demand.startGoal,
+          reached.length ? ' reached' : ' missed') +
+        stat('best combo', run.maxCombo);
 
     els['result-sheet'].innerHTML =
       '<div class="wordmark">' + D.META.name + '<s> &middot; ' + D.endLabel(run) + '</s></div>' +
@@ -1544,6 +2474,17 @@
     if (e.key === 'Tab') { e.preventDefault(); startRun(); return; }
     if (e.key === 'Escape') { renderTitle(); show('title'); return; }
 
+    // The goal ladder: left and right, on the title screen only. Deliberately not
+    // up and down, and deliberately not on the result screen - index.html binds the
+    // vertical arrows there to the stats panel, and two handlers fighting over one
+    // key is how a screen ends up doing two things at once.
+    if (app.screen === 'title' && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+      e.preventDefault();
+      if (app.draftId !== 'a') return;         // the ladder is draft A's alone
+      stepGoal(e.key === 'ArrowRight' ? 1 : -1, e.shiftKey);
+      return;
+    }
+
     if (app.screen !== 'run' && /^[12]$/.test(e.key)) {
       app.draftId = ORDER[Number(e.key) - 1];
       renderTitle();
@@ -1569,12 +2510,13 @@
 
   function boot() {
     grab();
+    app.goals = loadGoalState();
     app.renderer = c.createRenderer({
       line: els['line'], caret: els['caret'], caretLine: els['caret-line'], track: els['track']
     });
     app.rail = c.createRail(els['rail']);
 
-    const remeasure = () => { app.renderer.measure(); app.rail.resize(); };
+    const remeasure = () => { invalidateStageWidth(); app.renderer.measure(); app.rail.resize(); };
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(remeasure);
     window.addEventListener('resize', remeasure);
     window.addEventListener('keydown', onKeyDown);
@@ -1589,11 +2531,13 @@
   // throttles hard in a background tab. Used to preview a draft at a chosen point
   // in its difficulty curve, and to verify rendering without racing the clock.
   function replay(draftId, opts) {
-    const o = Object.assign({ keys: 120, msPerKey: 70, jitter: 0, errorEvery: 0, seed: 1 }, opts || {});
+    const o = Object.assign({ keys: 120, msPerKey: 70, jitter: 0, errorEvery: 0, seed: 1,
+      goal: 100 }, opts || {});
     const D = DRAFTS[draftId];
+    if (!app.goals) app.goals = loadGoalState();
     app.draftId = draftId;
     app.screen = 'replay';                     // keeps frame() from clobbering us
-    app.run = D.createRun(o.seed);
+    app.run = D.createRun(o.seed, { goal: o.goal });
     app.renderer.reset();
     app.rail.reset();
 
@@ -1603,6 +2547,7 @@
     const vis = draftId === 'c' ? 'block' : 'none';
     els['branch-safe'].style.display = vis;
     els['branch-greedy'].style.display = vis;
+    els['hud-goal-wrap'].style.display = draftId === 'a' ? 'block' : 'none';
     show('run');                  // before any drawing: a hidden canvas measures 0
     app.rail.resize();
     app.renderer.measure();
@@ -1614,7 +2559,7 @@
     for (let i = 0; i < o.keys && !app.run.ended; i++) {
       const run = app.run;
       let ch;
-      if (draftId === 'c' && run.branch && run.branch.committed === null) {
+      if (draftId === 'c' && D.atJunction(run)) {
         ch = (o.greedy ? run.branch.greedyText : run.branch.safeText)[0];
       } else {
         ch = run.text[run.cursor];
@@ -1644,6 +2589,7 @@
       draft: draftId, cursor: run.cursor, score: Math.round(run.score),
       wpm: Math.round(run.v), demand: +run.demand.value.toFixed(1),
       ratio: +run.ratio.toFixed(2), rhythm: run.rhythm,
+      goal: run.demand.goal, reached: run.draft === 'a' ? run.demand.reached.length : 0,
       strikes: D.strikesOf(run), ended: run.ended, reason: run.endReason,
       chapter: c.CHAPTERS[run.chapterIndex].name,
       caretOffsetPx: +info.caretOffset.toFixed(1), charWidth: +info.charWidth.toFixed(2)
@@ -1656,6 +2602,44 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
 })(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+<script>
+// Wiring that belongs to index.html because shell.js owns the keyboard and the
+// result markup and is edited elsewhere. Nothing here needs shell.js to change.
+(function () {
+  var S = window.cadenceScreens;
+  var sheet = document.getElementById('result-sheet');
+  var resultScreen = document.getElementById('screen-result');
+  var label = document.getElementById('theme-label');
+  var toggle = document.getElementById('theme-toggle');
+  if (!S) return;
+
+  // shell.js calls S.enhanceResult itself at the end of every run; this only has
+  // to cover a sheet that is already on the page when the script loads.
+  if (sheet) S.enhanceResult(sheet);
+
+  function afterTheme() {
+    // The canvas cannot inherit a custom property, so it re-reads them on demand.
+    var app = window.cadenceApp && window.cadenceApp.app;
+    if (app && app.rail) app.rail.readColours();
+    if (label) label.textContent = S.currentTheme() === 'dark' ? 'light' : 'dark';
+  }
+  afterTheme();
+
+  if (toggle) toggle.addEventListener('click', function () { S.toggleTheme(); afterTheme(); });
+
+  // shift+t and the arrows, chosen because shell.js treats every plain lowercase
+  // letter and space as "start typing" and already owns tab, esc, 1, 2 and c.
+  // e.key for shift+t is 'T', which fails its /^[a-z]$/ test, so it is free
+  // everywhere - including mid-run, where it must not interrupt the run.
+  window.addEventListener('keydown', function (e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'T') { S.toggleTheme(); afterTheme(); return; }
+    if (!sheet || !resultScreen || resultScreen.className.indexOf('is-active') < 0) return;
+    if (e.key === 'ArrowDown') S.setResultOpen(sheet, true);
+    else if (e.key === 'ArrowUp') S.setResultOpen(sheet, false);
+  });
+})();
 </script>
 </body>
 </html>

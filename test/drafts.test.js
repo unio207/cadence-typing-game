@@ -12,20 +12,21 @@ const IDS = ['a', 'c'];
 // Play a draft with a difficulty-aware typist that errs more when it cannot read.
 function play(id, opts) {
   const D = DRAFTS[id];
-  const o = Object.assign({ wpm: 120, jitter: 0.15, seed: 4242, maxSecs: 400, stopAfter: null }, opts);
+  const o = Object.assign({ wpm: 120, jitter: 0.15, seed: 4242, maxSecs: 400, stopAfter: null, goal: null }, opts);
   const rng = makeRng(o.seed);
   const typist = createTypist(o.wpm, o.jitter, rng);
-  const run = D.createRun(o.seed);
+  const run = D.createRun(o.seed, o.goal ? { goal: o.goal } : undefined);
   let now = 1000, next = now;
   const dt = 1 / 120;
   const marks = [];
+  let firstFadeAt = null;        // when the ink under the caret is half gone
 
   while (!run.ended && (now - 1000) < o.maxSecs * 1000) {
     const elapsed = (now - 1000) / 1000;
     const typing = o.stopAfter === null || elapsed < o.stopAfter;
     if (typing && now >= next) {
       let intended;
-      if (id === 'c' && run.branch && run.branch.committed === null) {
+      if (id === 'c' && D.atJunction(run)) {
         intended = (o.greedy ? run.branch.greedyText : run.branch.safeText)[0];
       } else {
         intended = run.text[run.cursor];
@@ -37,10 +38,11 @@ function play(id, opts) {
       next = now + typist.intervalFor(intended);
     }
     D.tick(run, now, dt);
+    if (firstFadeAt === null && run.total >= 10 && D.inkAhead(run, 0) < 0.55) firstFadeAt = elapsed;
     marks.push({ t: elapsed, strikes: D.strikesOf(run) });
     now += dt * 1000;
   }
-  return { run: run, secs: (now - 1000) / 1000, marks: marks, D: D };
+  return { run: run, secs: (now - 1000) / 1000, marks: marks, D: D, firstFadeAt: firstFadeAt };
 }
 
 // --- the cold-start bug: the opening of a run must be survivable ------------
@@ -130,6 +132,44 @@ test('draft A: a typo on legible ink costs no strike, a blind one does', () => {
   assert.equal(run.endReason, 'strikes');
 });
 
+// --- draft A: the goal pacer ------------------------------------------------
+
+test('draft A: the ink is drying inside ten seconds, at every speed', () => {
+  // The player's complaint, as a test. The ink used to stay near-crisp for 28-53s
+  // because the demand paced itself off the player's own sustained speed and
+  // converged BELOW the ratio at which anything is visible. It now ramps to a goal
+  // the player chose, so the arrival time is the same at every speed.
+  for (const wpm of [60, 90, 120, 160, 200]) {
+    const r = play('a', { wpm: wpm, jitter: 0.12, goal: wpm, maxSecs: 12 });
+    assert.ok(r.firstFadeAt !== null,
+      'at ' + wpm + ' wpm on a goal of ' + wpm + ' the ink never dried inside 12s');
+    assert.ok(r.firstFadeAt < 10,
+      'at ' + wpm + ' wpm the ink dried at ' + r.firstFadeAt.toFixed(1) + 's');
+  }
+});
+
+test('draft A: typing at your goal is survivable, ten per cent under it is not', () => {
+  // The pacer only works if the goal is a line you can sit on. Measured: a steady
+  // player on their goal lasts minutes, while the same player under a goal 10%
+  // above them is reading from memory within seconds and gone inside 25.
+  const onGoal = play('a', { wpm: 120, jitter: 0.10, goal: 118, maxSecs: 120 });
+  const under = play('a', { wpm: 120, jitter: 0.10, goal: 132, maxSecs: 120 });
+  assert.ok(onGoal.secs > 60,
+    'a player on their goal lasted only ' + onGoal.secs.toFixed(0) + 's');
+  assert.ok(under.secs < 30,
+    'a player 10% under their goal lasted ' + under.secs.toFixed(0) + 's');
+});
+
+test('draft A: reaching the goal steps the level up instead of ending the run', () => {
+  const A = DRAFTS.a;
+  const r = play('a', { wpm: 150, jitter: 0.08, goal: 70, maxSecs: 120 });
+  const reached = A.reachedOf(r.run);
+  assert.ok(reached.length >= 2, 'cleared only ' + reached.length + ' levels at 150 wpm on a 70 goal');
+  assert.equal(reached[0].goal, 70);
+  assert.ok(reached[0].ms > 9000, 'reached the goal after only ' + reached[0].ms + 'ms');
+  assert.ok(A.goalOf(r.run) > 70, 'the goal did not climb: ' + A.goalOf(r.run));
+});
+
 test('draft A: the page never fades the newest characters', () => {
   const A = DRAFTS.a;
   const run = A.createRun(1);
@@ -144,11 +184,67 @@ test('draft A: the page never fades the newest characters', () => {
 test('draft C: one keystroke commits you to a line', () => {
   const C = DRAFTS.c;
   const run = C.createRun(5);
-  assert.equal(run.branch.committed, null);
-  assert.notEqual(run.branch.safeText[0], run.branch.greedyText[0]);
-  C.onKey(run, run.branch.greedyText[0], 1000);
-  assert.equal(run.branch.committed, 'greedy');
+  let now = 1000;
+  while (!C.atJunction(run)) { C.onKey(run, run.text[run.cursor], now); now += 70; }
+  const branch = run.branch;
+  assert.equal(branch.committed, null);
+  assert.notEqual(branch.safeText[0], branch.greedyText[0]);
+  C.onKey(run, branch.greedyText[0], now);
+  assert.equal(branch.committed, 'greedy');
   assert.equal(run.greedyTaken, 1);
+});
+
+// --- draft C: read-ahead ----------------------------------------------------
+
+test('draft C: both lines are on screen a whole segment before the junction', () => {
+  // Regression test for the flaw the player reported: the two candidate lines used
+  // to appear at the instant the cursor reached the junction, so you had to stop,
+  // read both and choose. The junction must now be open - and the page must
+  // already run past it - well before your fingers arrive.
+  const C = DRAFTS.c;
+  const run = C.createRun(11);
+  let now = 1000;
+  const leads = [];
+  for (let i = 0; i < 600 && !run.ended; i++) {
+    assert.notEqual(run.branch, null, 'no junction open at cursor ' + run.cursor);
+    assert.equal(run.branch.committed, null, 'the open junction was already resolved');
+    assert.ok(run.branch.at >= run.cursor,
+      'the cursor ran past an unresolved junction by ' + (run.cursor - run.branch.at));
+    // the page must never end at or before the junction: there is always a
+    // provisional continuation to read, so the line never stalls.
+    assert.ok(run.text.length > run.branch.at,
+      'the page ended at the junction (length ' + run.text.length + ')');
+    const res = C.onKey(run, run.text[run.cursor], now);
+    // a junction just resolved: the next one is already open, and its run-up is
+    // how much warning the player gets.
+    if (res.chose !== null) leads.push(run.branch.at - run.cursor);
+    C.tick(run, now, 1 / 60);
+    now += 70;
+  }
+  assert.ok(leads.length > 5, 'passed only ' + leads.length + ' junctions');
+  // the commit keystroke itself has already been struck, so the lead is one less
+  // than draft C's MIN_RUNUP
+  const minLead = Math.min.apply(null, leads);
+  assert.ok(minLead >= 17,
+    'the shortest run-up to a junction was only ' + minLead + ' characters');
+});
+
+test('draft C: taking the greedy line never rewrites anything already typed', () => {
+  const C = DRAFTS.c;
+  const run = C.createRun(23);
+  let now = 1000;
+  while (!C.atJunction(run)) { C.onKey(run, run.text[run.cursor], now); now += 70; }
+  const typed = run.text.slice(0, run.cursor);
+  const greedy = run.branch.greedyText;
+  C.onKey(run, greedy[0], now);
+  assert.equal(run.text.slice(0, typed.length), typed, 'the committed page changed');
+  assert.equal(run.text.slice(typed.length, typed.length + greedy.length), greedy,
+    'the greedy line is not on the page after committing to it');
+  // and the payout follows the swap, character for character
+  for (let i = 0; i < greedy.length; i++) {
+    assert.equal(run.payoutAt[typed.length + i], C.TUNING.greedyPayout,
+      'payout at ' + i + ' did not follow the greedy swap');
+  }
 });
 
 test('draft C: the greedy line pays double and quickens the edge', () => {

@@ -14,7 +14,7 @@ function play(profile, seed, strategy, threshold) {
   while (!run.ended && (now - 1000) < 400000) {
     if (now >= next) {
       let key;
-      if (run.branch && run.branch.committed === null) {
+      if (C.atJunction(run)) {
         const greedy = strategy === 'greedy' ? true
           : strategy === 'safe' ? false
           : C.gapOf(run) > threshold;

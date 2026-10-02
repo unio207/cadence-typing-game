@@ -7,6 +7,23 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+// Resolve the theme before the first paint, so a dark-mode player never sees a
+// frame of cream. These are the same two lines as cadenceScreens.resolveTheme,
+// deliberately duplicated: src/screens.js loads at the end of <body>, which is
+// far too late to decide what colour the page is.
+(function () {
+  try {
+    var t = localStorage.getItem('cadence.theme');
+    if (t !== 'light' && t !== 'dark') {
+      t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    document.documentElement.setAttribute('data-theme', t);
+  } catch (e) {
+    document.documentElement.setAttribute('data-theme', 'light');
+  }
+})();
+</script>
 <style>
   :root {
     --paper:    #f7f4ec;
@@ -15,12 +32,32 @@
     --mute:     #a3a098;
     --rule:     #e6e2d7;
     --red:      #b4412f;
+    --faint:    #cfc9ba;   /* the struck-through half of the wordmark */
+    --body:     #7d7a72;   /* running prose: the draft blurbs */
     --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
     --ease: cubic-bezier(.33, 1, .68, 1);
     --size: 30px;
     /* where the caret sits across the stage. draft C moves it right: its threat
        comes from behind, so it needs room to show the edge. */
     --caret-x: 34%;
+  }
+
+  /* Warm dark: the paper is dimmed, not negated. Never pure black - #19150f still
+     has the cream's hue in it, so the page reads as lamplight on the same stock
+     rather than as a different material. --ink-done and --rule have to be lifted
+     off the surface rather than dropped toward it, since on dark the "receded"
+     direction is up. --red keeps its hue and gains lightness: #b4412f against
+     #19150f is barely a colour, and red has to stay the loudest thing on screen
+     because it means an error, a strike, the demand notch or a new record. */
+  :root[data-theme="dark"] {
+    --paper:    #19150f;
+    --ink:      #f0e7d4;
+    --ink-done: #544d41;
+    --mute:     #8b8373;
+    --rule:     #2c261c;
+    --red:      #d4594a;
+    --faint:    #463f32;
+    --body:     #9c9381;
   }
 
   * { box-sizing: border-box; }
@@ -109,7 +146,7 @@
   .sheet { height: 100%; display: flex; flex-direction: column; justify-content: center;
     padding: 0 clamp(20px, 5vw, 64px); max-width: 1040px; margin: 0 auto; }
   .wordmark { font-size: 13px; letter-spacing: .34em; text-transform: uppercase; font-weight: 500; }
-  .wordmark s { text-decoration: none; color: #cfc9ba; }
+  .wordmark s { text-decoration: none; color: var(--faint); }
 
   .drafts { margin-top: 38px; }
   .draft-row { display: flex; align-items: baseline; gap: 18px; padding: 16px 0;
@@ -117,10 +154,22 @@
   .draft-row:last-child { border-bottom: 1px solid var(--rule); }
   .draft-row .k { font-size: 10px; letter-spacing: .2em; color: var(--mute); width: 14px; }
   .draft-row .n { font-size: 25px; letter-spacing: -.02em; width: 190px; font-weight: 500; }
-  .draft-row .d { font-size: 12.5px; color: #7d7a72; flex: 1; padding-right: 20px; }
+  .draft-row .d { font-size: 12.5px; color: var(--body); flex: 1; padding-right: 20px; }
   .draft-row .b { font-size: 12.5px; color: var(--ink); text-align: right; white-space: nowrap; }
   .draft-row .b em { font-style: normal; color: var(--mute); }
   .draft-row:hover .n, .draft-row.sel .n { color: var(--red); }
+
+  /* the goal ladder. one rung per level, cleared rungs inked solid - the ladder is
+     the progression, so it has to read as one object rather than as a form. */
+  .goal { margin-top: 30px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .goal .label { font-size: 10px; letter-spacing: .2em; text-transform: uppercase;
+    color: var(--mute); font-style: normal; width: 104px; flex: none; }
+  .rung { font-size: 15px; letter-spacing: -.02em; color: var(--ink-done); cursor: pointer;
+    font-variant-numeric: tabular-nums; }
+  .rung.cleared { color: var(--ink); }
+  .rung.cleared::after { content: '\00b7'; color: var(--red); margin-left: 2px; }
+  .rung.sel { color: var(--red); font-weight: 500; }
+  .goal .note { font-size: 11.5px; color: var(--body); margin-left: auto; }
 
   .hint { margin-top: 40px; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: var(--mute); }
   .hint b { color: var(--ink); font-weight: 500; }
@@ -135,16 +184,42 @@
   #page-print { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--rule);
     font-size: 16px; line-height: 2.0; max-height: 170px; overflow: hidden; }
 
-  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  /* the expand control: a hint, not a button. it lives in the hint row and is
+     styled by .hint, so it inherits the 10px uppercase letter-spaced voice. */
+  .hint .expand { cursor: pointer; user-select: none; }
+  .hint .expand:hover { color: var(--ink); }
+
+  /* everything past the headline number. collapsed is the default state; the
+     reveal is one of the two house curves and does not run under reduced motion. */
+  .more { display: none; }
+  #result-sheet.is-open .more { display: block; animation: reveal .3s var(--ease) both; }
+  @keyframes reveal { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+
+  /* theme control. fixed, so it is reachable from the title screen, mid-run and
+     on the result screen without any screen needing to know about it. */
+  #theme-toggle {
+    position: fixed; left: clamp(20px, 5vw, 64px); bottom: 15px; z-index: 5;
+    font-size: 9px; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--mute); cursor: pointer; user-select: none;
+  }
+  #theme-toggle b { color: var(--ink); font-weight: 500; }
+  #theme-toggle:hover { color: var(--ink); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
 </style>
 </head>
 <body>
 
 <section id="screen-title" class="screen is-active">
   <div class="sheet">
-    <div class="wordmark">cadence<s> &middot; three drafts</s></div>
+    <div class="wordmark">cadence<s> &middot; two drafts</s></div>
     <div class="drafts" id="draft-list"></div>
-    <div class="hint"><span><b>1 2</b> choose</span><span><b>any letter</b> begin</span></div>
+    <div class="goal" id="goal-row"><i class="label">goal wpm</i><span id="level-list"></span>
+      <span class="note" id="goal-note"></span></div>
+    <div class="hint"><span><b>1 2</b> choose</span><span><b>&larr; &rarr;</b> goal</span>
+      <span><b>any letter</b> begin</span></div>
   </div>
 </section>
 
@@ -154,6 +229,7 @@
     <span><i class="label">wpm</i><b class="value"><span id="hud-wpm">0</span><span class="of"> / <span id="hud-demand">40</span></span></b></span>
     <span><i class="label">rhythm</i><b class="value" id="hud-rhythm">50</b></span>
     <span class="spacer"></span>
+    <span class="chapter" id="hud-goal-wrap"><i class="label" id="hud-goal-label">goal</i><b class="name" id="hud-goal">40</b></span>
     <span class="chapter"><i class="label" id="hud-chapter-label">chapter one</i><b class="name" id="hud-chapter">open field</b></span>
     <span class="chapter"><i class="label" id="strike-label">strikes</i><div id="strikes"><i></i><i></i><i></i></div></span>
   </div>
@@ -174,6 +250,8 @@
   <div class="sheet" id="result-sheet"></div>
 </section>
 
+<div id="theme-toggle"><b>shift t</b> <span id="theme-label">dark</span></div>
+
 <script src="src/keymap.js"></script>
 <script src="src/words.js"></script>
 <script src="src/generator.js"></script>
@@ -185,5 +263,43 @@
 <script src="src/render.js"></script>
 <script src="src/screens.js"></script>
 <script src="src/shell.js"></script>
+<script>
+// Wiring that belongs to index.html because shell.js owns the keyboard and the
+// result markup and is edited elsewhere. Nothing here needs shell.js to change.
+(function () {
+  var S = window.cadenceScreens;
+  var sheet = document.getElementById('result-sheet');
+  var resultScreen = document.getElementById('screen-result');
+  var label = document.getElementById('theme-label');
+  var toggle = document.getElementById('theme-toggle');
+  if (!S) return;
+
+  // shell.js calls S.enhanceResult itself at the end of every run; this only has
+  // to cover a sheet that is already on the page when the script loads.
+  if (sheet) S.enhanceResult(sheet);
+
+  function afterTheme() {
+    // The canvas cannot inherit a custom property, so it re-reads them on demand.
+    var app = window.cadenceApp && window.cadenceApp.app;
+    if (app && app.rail) app.rail.readColours();
+    if (label) label.textContent = S.currentTheme() === 'dark' ? 'light' : 'dark';
+  }
+  afterTheme();
+
+  if (toggle) toggle.addEventListener('click', function () { S.toggleTheme(); afterTheme(); });
+
+  // shift+t and the arrows, chosen because shell.js treats every plain lowercase
+  // letter and space as "start typing" and already owns tab, esc, 1, 2 and c.
+  // e.key for shift+t is 'T', which fails its /^[a-z]$/ test, so it is free
+  // everywhere - including mid-run, where it must not interrupt the run.
+  window.addEventListener('keydown', function (e) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.key === 'T') { S.toggleTheme(); afterTheme(); return; }
+    if (!sheet || !resultScreen || resultScreen.className.indexOf('is-active') < 0) return;
+    if (e.key === 'ArrowDown') S.setResultOpen(sheet, true);
+    else if (e.key === 'ArrowUp') S.setResultOpen(sheet, false);
+  });
+})();
+</script>
 </body>
 </html>

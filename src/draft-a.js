@@ -2,6 +2,18 @@
 // Pressure is legibility. The ink dries ahead of your caret at a rate the demand
 // sets; fall below 94% of it and a hole opens in the page. You can only be killed
 // by being wrong about something you could not see.
+//
+// The demand is a GOAL the player chose, not a chaser. It ramps from a gentle
+// opening to that goal over ten seconds and then holds, so the ink is a pacer: at
+// exactly the goal the page is readable but visibly drying, a little under and you
+// are reading from memory. Hold at or above the goal for ten seconds and you have
+// REACHED it - the ladder steps up and the ramp runs again, so one run can clear
+// several levels and the mode stays endless.
+//
+// It used to pace itself off the player's own sustained speed, and the squeeze
+// arrived far too late: measured, the first unreadable hole landed at 45-98s, worse
+// the faster you typed. See docs/superpowers/specs/2026-10-03-draft-a-pacing.md
+// for the autopsy and for the alternatives that were rejected.
 (function (root) {
   'use strict';
 
@@ -17,6 +29,24 @@
 
   const WARMUP_RATIO = 1.2;   // comfortably legible while the speed tracker fills
 
+  // How fast the ink is allowed to DRY, as a time constant on the ratio.
+  //
+  // Measured problem this fixes: rolling wpm over 3s wobbles by 4-8% even for a
+  // metronome, because the text's hand and finger transitions are not uniform. The
+  // hole opens below 94% of the goal, so a player typing exactly AT their goal was
+  // flickering in and out of blindness several times a minute, and a blind
+  // character is wrong about a third of the time - three strikes arrived in 16-44s.
+  // Typing at your goal has to be sustainable, so the estimator's wobble must not
+  // reach the page.
+  //
+  // Asymmetric on purpose: catching up is instant, because pushing hard has to be
+  // rewarded immediately and a player who speeds up should see the page clear under
+  // their fingers. Falling behind takes DRY_TAU to register, so a 300ms stumble
+  // barely moves the ink while a real slowdown dries it out within a couple of
+  // seconds. It is also the literal reading of the premise: ink takes a moment to
+  // dry. Measured at 1.6s; see docs/.../2026-10-03-draft-a-pacing.md.
+  const DRY_TAU = 1.6;
+
   const META = {
     id: 'a',
     name: 'drying ink',
@@ -31,7 +61,10 @@
     }
   }
 
-  function createRun(seed) {
+  // opts.goal: the wpm the player is pacing against. Defaults to the bottom of the
+  // ladder, which is also what every caller that does not care about the goal gets.
+  function createRun(seed, opts) {
+    const goal = (opts && opts.goal) || s.LEVELS[0];
     const run = {
       draft: 'a', seed: seed, gen: g.createGenerator(seed),
       text: '', cursor: 0, marks: [], rhythmAt: [],
@@ -39,8 +72,9 @@
       v: 0, peakV: 0, ratio: 1, rhythm: 50, chapterIndex: 0,
       startedAt: null, lastKeyAt: null, nowMs: 0, intervals: [], blindSince: null,
       ended: false, endReason: null,
-      demand: s.createDemand(), speed: m.createSpeed(), wpmTrace: []
+      demand: s.createPacer(goal), speed: m.createSpeed()
     };
+    run.chapterIndex = g.chapterAt(run.demand.goal);
     topUp(run);
     return run;
   }
@@ -97,19 +131,29 @@
 
     run.v = m.wpmAt(run.speed, nowMs);
 
+    s.stepPacer(run.demand, dtSeconds);
+
     // Until the speed tracker is warm, rolling wpm is meaningless - it reads near
-    // zero however fast you are going. Pin the ratio somewhere comfortable and
-    // keep the cold-start zeros out of the demand ratchet.
+    // zero however fast you are going, so it would blank the page on keystroke two.
+    // Pin the ratio somewhere comfortable until it means something.
     if (!m.isWarm(run.speed)) {
       run.ratio = WARMUP_RATIO;
-      s.stepDemand(run.demand, dtSeconds);
     } else {
-      s.sampleSpeed(run.demand, run.v, nowMs);
-      s.stepDemand(run.demand, dtSeconds);
-      run.ratio = run.demand.value > 0 ? run.v / run.demand.value : 0;
+      const target = run.demand.value > 0 ? run.v / run.demand.value : 0;
+      run.ratio = target >= run.ratio
+        ? target
+        : run.ratio + (target - run.ratio) * (1 - Math.exp(-dtSeconds / DRY_TAU));
+      if (s.holdAtGoal(run.demand, run.v, dtSeconds)) {
+        run.demand.reached.push({ goal: run.demand.goal, ms: nowMs - run.startedAt });
+        s.stepUp(run.demand);
+      }
     }
 
-    const next = g.chapterAt(run.demand.value);
+    // Chapters key off the GOAL, not the demand, so the texture ladder and the
+    // level ladder line up: clearing a level is also what changes what your hands
+    // are doing. Keying them off the ramping demand instead would walk a player
+    // through three textures in the first ten seconds of every run.
+    const next = g.chapterAt(run.demand.goal);
     if (next > run.chapterIndex) run.chapterIndex = next;
 
     if (s.isBlind(run.ratio)) {
@@ -119,8 +163,6 @@
       run.blindSince = null;
     }
 
-    run.wpmTrace.push({ t: nowMs - run.startedAt, v: run.v, demand: run.demand.value });
-    if (run.wpmTrace.length > 4000) run.wpmTrace.shift();
   }
 
   // how the renderer should ink the character `d` ahead of the caret
@@ -130,10 +172,14 @@
     return run.endReason === 'strikes' ? 'three blind guesses' : 'the page dried out';
   }
 
+  function goalOf(run) { return run.demand.goal; }
+  function reachedOf(run) { return run.demand.reached; }
+
   const api = {
     draftA: {
-      META, createRun, onKey, tick, inkAhead, endLabel,
-      MAX_STRIKES, STALL_MS, strikesOf: run => run.strikes, maxStrikes: () => MAX_STRIKES
+      META, createRun, onKey, tick, inkAhead, endLabel, goalOf, reachedOf,
+      LEVELS: s.LEVELS, MAX_STRIKES, STALL_MS,
+      strikesOf: run => run.strikes, maxStrikes: () => MAX_STRIKES
     }
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api.draftA;
