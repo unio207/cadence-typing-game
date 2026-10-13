@@ -61,6 +61,27 @@
     }
   }
 
+  // Characters ahead of the caret that are kept when the chapter changes. Measured
+  // in Chrome at the widest stage (1180px, 30px Plex Mono, 17.7px a glyph): 43
+  // characters are visible right of the caret, and the stage never gets wider. The
+  // rest is slack, so the cut always lands off screen.
+  const KEEP_AHEAD = 60;
+
+  // On a chapter change, drop the buffered old-chapter text past the visible edge
+  // and regenerate it in the new chapter. Without this the hands keep typing the
+  // old texture for 200-330 characters (measured 18-28s, and at 10s a level a
+  // chapter could be skipped outright). The cut lands on a space, so the kept text
+  // ends on a whole word and nothing at or behind the caret changes.
+  function rechapter(run) {
+    const cut = run.text.indexOf(' ', run.cursor + KEEP_AHEAD);
+    if (cut === -1) return;
+    run.text = run.text.slice(0, cut);
+    run.gen.rewind(run.text.split(' '));
+    run.textCut = cut;           // the renderer redraws every slot past this
+    run.textEdits++;
+    topUp(run);
+  }
+
   // opts.goal: the wpm the player is pacing against. Defaults to the bottom of the
   // ladder, which is also what every caller that does not care about the goal gets.
   function createRun(seed, opts) {
@@ -72,7 +93,7 @@
     const stepUp = !opts || opts.stepUp !== false;
     const run = {
       draft: 'a', seed: seed, gen: g.createGenerator(seed),
-      text: '', cursor: 0, marks: [], rhythmAt: [],
+      text: '', cursor: 0, marks: [], rhythmAt: [], struck: [], textCut: 0, textEdits: 0,
       combo: 0, maxCombo: 0, score: 0, strikes: 0, correct: 0, total: 0,
       v: 0, peakV: 0, ratio: 1, rhythm: 50, chapterIndex: 0,
       startedAt: null, lastKeyAt: null, nowMs: 0, intervals: [], blindSince: null,
@@ -122,6 +143,7 @@
       if (wasBlind) {
         strike = true;
         run.strikes++;
+        run.struck[run.cursor - 1] = true;   // presentation only: the renderer blots it
         if (run.strikes >= MAX_STRIKES) endRun(run, 'strikes');
       }
     }
@@ -159,7 +181,7 @@
     // are doing. Keying them off the ramping demand instead would walk a player
     // through three textures in the first ten seconds of every run.
     const next = g.chapterAt(run.demand.goal);
-    if (next > run.chapterIndex) run.chapterIndex = next;
+    if (next > run.chapterIndex) { run.chapterIndex = next; rechapter(run); }
 
     if (s.isBlind(run.ratio)) {
       if (run.blindSince === null) run.blindSince = nowMs;

@@ -67,23 +67,23 @@ A - drying ink   (pressure: legibility, paced by a goal wpm)
   typist                     goal    wpm   fade    hole    strike  reached   ends       ending
   metronome 200 on goal        206    192  8s    13s     15s     0.0         16s   strikes      11,271
   metronome 200 10% under      226    193  7s    9s      10s     0.0         11s   strikes       7,560
-  metronome 200 10% over       185    191  10s   56s     56s     2.0 @11s    57s   strikes      42,848
+  metronome 200 10% over       185    191  10s   57s     57s     2.0 @11s    59s   strikes      44,466
   tight 150 on goal            145    139  8s    24s     35s     0.0         72s   strikes      24,277
   tight 150 10% under          159    139  7s    10s     11s     0.0         12s   strikes       4,171
-  tight 150 10% over           130    140  11s   23s     23s     1.0 @11s    30s   strikes      10,797
-  normal 110 on goal           111    110  9s    46s     109s    0.2 @14s   182s   strikes      38,314
+  tight 150 10% over           130    139  11s   22s     27s     1.0 @11s    28s   strikes      10,344
+  normal 110 on goal           111    110  9s    46s     114s    0.2 @14s   184s   strikes      38,568
   normal 110 10% under         117    110  8s    15s     21s     0.0         28s   strikes       5,835
-  normal 110 10% over          101    110  12s   29s     39s     1.0 @11s    80s   strikes      16,422
+  normal 110 10% over          101    110  13s   29s     29s     1.0 @11s    78s   strikes      16,182
   ragged 110 on goal           111    109  9s    24s     52s     0.2 @13s    74s   strikes      11,215
   ragged 110 10% under         117    107  8s    14s     17s     0.0         20s   strikes       2,825
-  ragged 110 10% over          101    110  12s   31s     33s     1.0 @16s    52s   strikes       8,041
-  slow 70 on goal               71     72  9s    45s     55s     0.6 @120s  132s   strikes      12,119
+  ragged 110 10% over          101    110  13s   31s     33s     1.0 @16s    52s   strikes       8,041
+  slow 70 on goal               71     72  9s    45s     56s     0.6 @120s  133s   strikes      12,215
   slow 70 10% under             79     71  8s    12s     14s     0.0         21s   strikes       1,736
-  slow 70 10% over              64     72  15s   64s     65s     2.0 @15s    74s   strikes       6,884
+  slow 70 10% over              64     72  17s   65s     65s     2.0 @15s    76s   strikes       7,062
   (ends at 240s = survived; `reached` is levels cleared in a run)
 ```
 
-Two things that table is there to prove. The ink starts drying at **7–14
+Two things that table is there to prove. The ink starts drying at **7–17
 seconds at every speed and every goal**, because that is a property of the ramp
 rather than of the player — it cannot drift with skill. And the survivable band is
 narrow: 10% under your goal puts a hole in the page at about ten seconds and ends

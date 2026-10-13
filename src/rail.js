@@ -65,6 +65,7 @@
     const ctx = canvas.getContext('2d');
     const marks = [];           // { t, dev } - dev in 0..1, computed once at mark()
     const intervals = [];       // trailing WINDOW intervals, for the local median
+    const steps = [];           // times of goal step-ups, drawn as full-height ticks
     let w = 0, h = 0, ink = '#17171a', rule = '#e6e2d7';
 
     function readColours() {
@@ -102,6 +103,8 @@
       marks.push({ t: nowMs, dev: dev });
       if (marks.length > CAPACITY) marks.shift();
     }
+
+    function step(nowMs) { steps.push(nowMs); }
 
     // Reading canvas.clientWidth every frame to spot a size change forces a
     // synchronous layout, and it lands immediately after the renderer has dirtied
@@ -143,14 +146,24 @@
         const len = STUB + (SPIKE - STUB) * marks[i].dev;
         ctx.fillRect(Math.round(x) - 1, top, 2, Math.min(len, h - top));
       }
+
+      // a cleared goal: one 1px tick through the rule and the marks, scrolling
+      // and ageing with them, so the clear sits in the run's own timeline
+      while (steps.length && w - (nowMs - steps[0]) * PX_PER_MS < -2) steps.shift();
+      for (let i = 0; i < steps.length; i++) {
+        const x = w - (nowMs - steps[i]) * PX_PER_MS;
+        if (x > w) continue;
+        ctx.globalAlpha = 0.15 + 0.85 * Math.pow(Math.max(0, x) / w, 0.8);
+        ctx.fillRect(Math.round(x), 0, 1, h);
+      }
       ctx.globalAlpha = 1;
     }
 
-    function reset() { marks.length = 0; intervals.length = 0; }
+    function reset() { marks.length = 0; intervals.length = 0; steps.length = 0; }
 
     resize();
     return {
-      resize: resize, mark: mark, draw: draw, reset: reset,
+      resize: resize, mark: mark, step: step, draw: draw, reset: reset,
       readColours: readColours,
       // test seam: the drawn shape is entirely a function of these
       _marks: marks

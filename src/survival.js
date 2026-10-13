@@ -86,6 +86,7 @@
   const OPENING_FRACTION = 0.5;         // the ramp starts here, as a fraction of the goal
   const HOLD_SECONDS = 10;              // time at or above the goal to have REACHED it
   const HOLD_RELEASE = 0.97;            // dipping inside this does not reset the hold
+  const BREATHER = 0.92;                // a step-up ramps from this fraction of the old goal
 
   function nextGoal(goal) {
     for (const l of LEVELS) if (l > goal) return l;
@@ -128,10 +129,12 @@
   }
 
   // Reaching a goal does not end the run: the ladder steps up and the ramp starts
-  // again from wherever the demand had got to, so one run can clear several levels
-  // and the mode stays endless.
+  // again from just under where the demand had got to, so one run can clear
+  // several levels and the mode stays endless. The dip is the breather: the ratio
+  // rises the same frame (draft-a applies rising ratios instantly), the page
+  // visibly refills, and the smoothstep climbs back over RAMP_SECONDS.
   function stepUp(pacer) {
-    pacer.from = pacer.value;
+    pacer.from = BREATHER * pacer.value;
     pacer.goal = nextGoal(pacer.goal);
     pacer.rampT = 0;
     pacer.atGoalMs = 0;
@@ -161,7 +164,7 @@
 
   const api = {
     W, LEGIBLE, createDemand, sampleSpeed, sustainedOf, stepDemand,
-    LEVELS, RAMP_SECONDS, OPENING_FRACTION, HOLD_SECONDS, HOLD_RELEASE,
+    LEVELS, RAMP_SECONDS, OPENING_FRACTION, HOLD_SECONDS, HOLD_RELEASE, BREATHER,
     nextGoal, levelIndexOf, createPacer, stepPacer, holdAtGoal, stepUp,
     baseInk, frontWidth, opacityAt, isBlind, unreadableWidth
   };

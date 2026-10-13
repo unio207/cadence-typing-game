@@ -206,7 +206,7 @@ test('reaching a goal steps the ladder up and ramps again, it does not end the r
   }
   assert.ok(steps >= 4, 'cleared only ' + steps + ' levels in 60s at four times the goal');
   assert.equal(p.goal, 190, 'the ladder did not walk up to 190: ' + p.goal);
-  // and the ramp restarts from where the demand had got to, never from below it
+  // the ramp restarts a breather below the old goal and has climbed back by now
   assert.ok(p.value >= 100, 'the demand fell back to ' + p.value + ' after a step up');
 });
 

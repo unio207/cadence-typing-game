@@ -123,6 +123,51 @@ for (const id of ['a']) {
   });
 }
 
+test('draft a: a chapter change rewrites only the text past the visible edge', () => {
+  // On a step-up into a new chapter the buffered old-chapter text is cut and
+  // regenerated. Everything typed, and everything a player can see ahead of the
+  // caret (43 characters, measured in Chrome at the widest stage), must survive,
+  // and spans already holding the discarded characters must be redrawn.
+  const D = DRAFTS.a;
+  const { poolFor } = require('../src/generator.js');
+  const h = harness();
+  const run = D.createRun(99, { goal: 55 });
+  let now = 1000;
+  for (let i = 0; i < 40; i++) {
+    D.onKey(run, run.text[run.cursor], now);
+    D.tick(run, now, 1 / 60);
+    h.r.draw(run, D, 1 / 60);
+    now += 70;
+  }
+  assert.equal(run.chapterIndex, 0);
+  const before = run.text, marks = run.marks.slice();
+
+  run.demand.goal = 70;               // what stepUp does to the goal: chapter 0 -> 1
+  D.tick(run, now, 1 / 60);
+  // stale slots are recycled a few per frame; the visible ones must never be stale
+  for (let f = 0; f < 30; f++) {
+    h.r.draw(run, D, 1 / 60);
+    for (const sp of h.els.line.children) {
+      if (sp.__idx < 0 || sp.__idx > run.cursor + 43 || sp.textContent === '') continue;
+      assert.equal(sp.textContent, run.text[sp.__idx], 'visible stale glyph at ' + sp.__idx);
+    }
+  }
+
+  assert.equal(run.chapterIndex, 1);
+  assert.ok(run.textCut >= run.cursor + 43, 'cut at ' + run.textCut + ' is on screen');
+  assert.equal(run.text.slice(0, run.textCut + 1), before.slice(0, run.textCut + 1));
+  assert.deepEqual(run.marks, marks);
+  assert.notEqual(run.text.slice(run.textCut), before.slice(run.textCut));
+  const pool = new Set(poolFor(1).map(t => t.word));
+  for (const w of run.text.slice(run.textCut + 1).split(' ')) {
+    assert.ok(pool.has(w), '"' + w + '" after the cut is not from the new chapter');
+  }
+  for (const sp of h.els.line.children) {
+    if (sp.__idx < 0 || sp.textContent === '') continue;
+    assert.equal(sp.textContent, run.text[sp.__idx], 'stale glyph in slot for ' + sp.__idx);
+  }
+});
+
 test('the rail draws without throwing and keeps a bounded buffer', () => {
   const canvas = railCanvas();
   const rail = createRail(canvas);

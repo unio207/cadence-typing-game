@@ -6,6 +6,13 @@
   const WINDOW = WINDOW_BEHIND + WINDOW_AHEAD;   // the span pool, 180 wide
   const SCROLL_K = 14;      // spring constants: scroll tracks tightly,
   const CARET_K = 9;        // the caret lags a little, deliberately
+  const REPAIR_PER_FRAME = 4;  // stale slots recycled per frame after a text cut
+
+  // prefers-reduced-motion, read once. The CSS media query only stops CSS
+  // transitions; the motion here is JS, so it has to be switched off here too:
+  // springs snap to their target and the typing pulse lends nothing.
+  const REDUCED = typeof window !== 'undefined' && typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // ---------------------------------------------------------------------------
   // Why the spans are a ring buffer at absolute positions.
@@ -47,7 +54,7 @@
   // readable one - the race it creates is real, not cosmetic relief from it.
   const PULSE_GAIN = 0.5;    // added to the pulse per character typed
   const PULSE_TAU = 0.26;    // seconds to decay by 1/e
-  const PULSE_MAX = 0.12;    // most opacity a keystroke can lend
+  const PULSE_MAX = REDUCED ? 0 : 0.12;    // most opacity a keystroke can lend
   const PULSE_REACH = 12;    // characters ahead that it reaches
 
   const TWIN_BEHIND = 4;     // characters of twin kept left of the caret
@@ -61,7 +68,9 @@
       pulse: 0,
       lastCursor: -1,
       twinFirst: -1,
-      twinText: null
+      twinText: null,
+      textEdits: 0,            // run.textEdits last seen: text past run.textCut was replaced
+      staleAt: -1              // next slot index that may still hold a discarded glyph
     };
 
     function measure() {
@@ -118,6 +127,23 @@
       const first = Math.max(0, cursor - WINDOW_BEHIND);
       const last = Math.min(run.text.length, first + WINDOW);
 
+      // The run cut its text back and regenerated past `textCut` (a chapter change).
+      // The slots already holding those characters would otherwise keep the old
+      // glyphs, so recycle them - a few a frame, nearest the caret first, because
+      // recycling all ~50 at once is the 47-write burst the perf test forbids. The
+      // cut sits >= 17 characters past the visible edge, about a second even at
+      // 200 wpm, and this clears ~50 slots in ~13 frames.
+      if (run.textEdits && run.textEdits !== st.textEdits) {
+        st.textEdits = run.textEdits;
+        st.staleAt = run.textCut + 1;
+      }
+      for (let n = 0; st.staleAt >= 0 && n < REPAIR_PER_FRAME;) {
+        if (st.staleAt >= first + WINDOW) { st.staleAt = -1; break; }
+        const sp = st.spans[st.staleAt % WINDOW];
+        if (sp.__idx === st.staleAt) { sp.__idx = -1; n++; }
+        st.staleAt++;
+      }
+
       for (let idx = first; idx < first + WINDOW; idx++) {
         const span = st.spans[idx % WINDOW];
 
@@ -146,7 +172,8 @@
 
         if (idx < cursor) {
           const mark = run.marks[idx];
-          cls = mark === 'err' ? 'err' : mark === 'miss' ? 'miss' : 'done';
+          cls = mark === 'err' ? (run.struck[idx] ? 'strike' : 'err')
+            : mark === 'miss' ? 'miss' : 'done';
         } else {
           const d = idx - cursor;
           op = draft.inkAhead(run, d);
@@ -163,8 +190,10 @@
 
       // --- springs: continuous float positions ---------------------------------
       const target = -cursor * cw;
-      st.x += (target - st.x) * (1 - Math.exp(-SCROLL_K * dt));
-      st.caretX += (target - st.caretX) * (1 - Math.exp(-CARET_K * dt));
+      if (REDUCED) { st.x = target; st.caretX = target; } else {
+        st.x += (target - st.x) * (1 - Math.exp(-SCROLL_K * dt));
+        st.caretX += (target - st.caretX) * (1 - Math.exp(-CARET_K * dt));
+      }
 
       els.line.style.transform = 'translate(' + st.x.toFixed(2) + 'px, -50%)';
       els.caret.style.transform = 'translateX(' + (st.caretX - target).toFixed(2) + 'px)';
@@ -190,7 +219,7 @@
     function reset() {
       st.x = 0; st.caretX = 0;
       st.pulse = 0; st.lastCursor = -1;
-      st.twinFirst = -1; st.twinText = null;
+      st.twinFirst = -1; st.twinText = null; st.textEdits = 0; st.staleAt = -1;
       for (const sp of st.spans) {
         sp.__idx = -1; sp.__cls = null; sp.__op = null;
         sp.textContent = ''; sp.className = ''; sp.style.opacity = '';
@@ -198,8 +227,19 @@
       els.caretLine.textContent = '';
     }
 
+    // adds a class to one character's span, if it is in the window. draw() would
+    // overwrite it, so this is for a frozen line only (the death beat); reset()
+    // clears it.
+    function mark(idx, cls) {
+      const sp = st.spans[idx % WINDOW];
+      if (!sp || sp.__idx !== idx) return false;
+      sp.className = sp.className ? sp.className + ' ' + cls : cls;
+      sp.__cls = null;
+      return true;
+    }
+
     return {
-      measure: measure, draw: draw, reset: reset,
+      measure: measure, draw: draw, reset: reset, mark: mark,
       get charWidth() { return st.charWidth; }
     };
   }

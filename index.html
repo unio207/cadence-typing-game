@@ -73,6 +73,10 @@
 
   .screen { display: none; height: 100%; }
   .screen.is-active { display: block; }
+  /* the hand-off after a death: the run leaves ease-in, the result arrives on --ease */
+  .screen.is-leaving { opacity: 0; transition: opacity .2s ease-in; }
+  .screen.is-entering { animation: enter .3s var(--ease) both; }
+  @keyframes enter { from { opacity: 0; } to { opacity: 1; } }
 
   .label { display: block; font-size: 9px; letter-spacing: .22em; text-transform: uppercase; color: var(--mute); margin-bottom: 4px; }
 
@@ -88,10 +92,18 @@
   .hud .spacer { margin-left: auto; }
   .hud .chapter { text-align: right; }
   .hud .chapter .name { display: block; font-size: 12.5px; font-weight: 500; line-height: 1; }
+  /* the ten-second hold, as a hairline under the goal that fills left to right */
+  #hud-goal { display: inline-block; position: relative; }
+  #hud-goal::after { content: ''; position: absolute; left: 0; right: 0; bottom: -5px; height: 1px;
+    background: var(--ink); transform: scaleX(var(--hold, 0)); transform-origin: left;
+    opacity: var(--hold-ink, 1); }
 
   #strikes { display: flex; gap: 7px; justify-content: flex-end; height: 11px; align-items: center; }
   #strikes i { width: 11px; height: 11px; border-radius: 50% 40% 55% 45%; box-shadow: inset 0 0 0 1px var(--rule); }
   #strikes i.spent { background: var(--red); box-shadow: none; }
+  /* the spent dot lands instead of switching */
+  #strikes i.land { animation: land .15s var(--ease) both; }
+  @keyframes land { from { transform: scale(.4); background-color: transparent; } to { transform: none; background-color: var(--red); } }
 
   /* text */
   #stage { position: absolute; top: 50%; left: 50%; width: 100%; max-width: 1180px;
@@ -107,6 +119,20 @@
   #line .done { color: var(--ink-done); }
   #line .err  { color: var(--red); opacity: .55 !important; }
   #line .miss { color: var(--red); opacity: .16 !important; }
+  /* the death beat: the glyph that cost the third strike, or the caret the page
+     dried under. a mark, not a flash - it is drawn once on a frozen line. */
+  #line .death { color: var(--red); opacity: 1 !important;
+    text-decoration: underline; text-underline-offset: 6px; text-decoration-thickness: 2px; }
+  #caret.death { background: var(--red); }
+  /* a struck glyph is full red on an ink blot that spreads in behind
+     it. A blob, not a text-shadow bleed, because nothing glows; the text never
+     moves. The blot is a red tint so the red glyph still reads on top of it. */
+  #line .strike { color: var(--red); opacity: 1 !important; }
+  #line .strike::before { content: ''; position: absolute; z-index: -1;
+    left: 50%; top: 50%; width: .8em; height: .8em; margin: -.36em 0 0 -.4em;
+    border-radius: 50% 40% 55% 45%; background: color-mix(in srgb, var(--red) 24%, transparent);
+    animation: blot .12s var(--ease) both; }
+  @keyframes blot { from { transform: scale(0); } to { transform: none; } }
 
 
   #caret {
@@ -117,10 +143,6 @@
     will-change: transform;
   }
   #caret-line { left: 0; color: var(--paper); transform: translateY(-50%); }
-
-
-
-    letter-spacing: -.01em; color: var(--ink); display: none; }
 
   #rail { position: absolute; left: 0; top: 120px; width: 100%; height: 22px; display: block; }
 

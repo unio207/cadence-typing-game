@@ -73,6 +73,10 @@
 
   .screen { display: none; height: 100%; }
   .screen.is-active { display: block; }
+  /* the hand-off after a death: the run leaves ease-in, the result arrives on --ease */
+  .screen.is-leaving { opacity: 0; transition: opacity .2s ease-in; }
+  .screen.is-entering { animation: enter .3s var(--ease) both; }
+  @keyframes enter { from { opacity: 0; } to { opacity: 1; } }
 
   .label { display: block; font-size: 9px; letter-spacing: .22em; text-transform: uppercase; color: var(--mute); margin-bottom: 4px; }
 
@@ -88,10 +92,18 @@
   .hud .spacer { margin-left: auto; }
   .hud .chapter { text-align: right; }
   .hud .chapter .name { display: block; font-size: 12.5px; font-weight: 500; line-height: 1; }
+  /* the ten-second hold, as a hairline under the goal that fills left to right */
+  #hud-goal { display: inline-block; position: relative; }
+  #hud-goal::after { content: ''; position: absolute; left: 0; right: 0; bottom: -5px; height: 1px;
+    background: var(--ink); transform: scaleX(var(--hold, 0)); transform-origin: left;
+    opacity: var(--hold-ink, 1); }
 
   #strikes { display: flex; gap: 7px; justify-content: flex-end; height: 11px; align-items: center; }
   #strikes i { width: 11px; height: 11px; border-radius: 50% 40% 55% 45%; box-shadow: inset 0 0 0 1px var(--rule); }
   #strikes i.spent { background: var(--red); box-shadow: none; }
+  /* the spent dot lands instead of switching */
+  #strikes i.land { animation: land .15s var(--ease) both; }
+  @keyframes land { from { transform: scale(.4); background-color: transparent; } to { transform: none; background-color: var(--red); } }
 
   /* text */
   #stage { position: absolute; top: 50%; left: 50%; width: 100%; max-width: 1180px;
@@ -107,6 +119,20 @@
   #line .done { color: var(--ink-done); }
   #line .err  { color: var(--red); opacity: .55 !important; }
   #line .miss { color: var(--red); opacity: .16 !important; }
+  /* the death beat: the glyph that cost the third strike, or the caret the page
+     dried under. a mark, not a flash - it is drawn once on a frozen line. */
+  #line .death { color: var(--red); opacity: 1 !important;
+    text-decoration: underline; text-underline-offset: 6px; text-decoration-thickness: 2px; }
+  #caret.death { background: var(--red); }
+  /* a struck glyph is full red on an ink blot that spreads in behind
+     it. A blob, not a text-shadow bleed, because nothing glows; the text never
+     moves. The blot is a red tint so the red glyph still reads on top of it. */
+  #line .strike { color: var(--red); opacity: 1 !important; }
+  #line .strike::before { content: ''; position: absolute; z-index: -1;
+    left: 50%; top: 50%; width: .8em; height: .8em; margin: -.36em 0 0 -.4em;
+    border-radius: 50% 40% 55% 45%; background: color-mix(in srgb, var(--red) 24%, transparent);
+    animation: blot .12s var(--ease) both; }
+  @keyframes blot { from { transform: scale(0); } to { transform: none; } }
 
 
   #caret {
@@ -117,10 +143,6 @@
     will-change: transform;
   }
   #caret-line { left: 0; color: var(--paper); transform: translateY(-50%); }
-
-
-
-    letter-spacing: -.01em; color: var(--ink); display: none; }
 
   #rail { position: absolute; left: 0; top: 120px; width: 100%; height: 22px; display: block; }
 
@@ -606,9 +628,14 @@
       return out;
     }
 
+    // The text was cut back to `kept`: the repeat and boundary rules must judge the
+    // next word against what is actually on the page, not the discarded words.
+    function rewind(kept) {
+      recent.length = 0;
+      for (const w of kept.slice(-NO_REPEAT_WINDOW)) if (w) recent.push(tagWord(w));
+    }
 
-
-    return { recent: recent, words: words };
+    return { recent: recent, words: words, rewind: rewind };
   }
 
   const api = {
@@ -805,6 +832,7 @@
   const OPENING_FRACTION = 0.5;         // the ramp starts here, as a fraction of the goal
   const HOLD_SECONDS = 10;              // time at or above the goal to have REACHED it
   const HOLD_RELEASE = 0.97;            // dipping inside this does not reset the hold
+  const BREATHER = 0.92;                // a step-up ramps from this fraction of the old goal
 
   function nextGoal(goal) {
     for (const l of LEVELS) if (l > goal) return l;
@@ -847,10 +875,12 @@
   }
 
   // Reaching a goal does not end the run: the ladder steps up and the ramp starts
-  // again from wherever the demand had got to, so one run can clear several levels
-  // and the mode stays endless.
+  // again from just under where the demand had got to, so one run can clear
+  // several levels and the mode stays endless. The dip is the breather: the ratio
+  // rises the same frame (draft-a applies rising ratios instantly), the page
+  // visibly refills, and the smoothstep climbs back over RAMP_SECONDS.
   function stepUp(pacer) {
-    pacer.from = pacer.value;
+    pacer.from = BREATHER * pacer.value;
     pacer.goal = nextGoal(pacer.goal);
     pacer.rampT = 0;
     pacer.atGoalMs = 0;
@@ -880,7 +910,7 @@
 
   const api = {
     W, LEGIBLE, createDemand, sampleSpeed, sustainedOf, stepDemand,
-    LEVELS, RAMP_SECONDS, OPENING_FRACTION, HOLD_SECONDS, HOLD_RELEASE,
+    LEVELS, RAMP_SECONDS, OPENING_FRACTION, HOLD_SECONDS, HOLD_RELEASE, BREATHER,
     nextGoal, levelIndexOf, createPacer, stepPacer, holdAtGoal, stepUp,
     baseInk, frontWidth, opacityAt, isBlind, unreadableWidth
   };
@@ -953,6 +983,27 @@
     }
   }
 
+  // Characters ahead of the caret that are kept when the chapter changes. Measured
+  // in Chrome at the widest stage (1180px, 30px Plex Mono, 17.7px a glyph): 43
+  // characters are visible right of the caret, and the stage never gets wider. The
+  // rest is slack, so the cut always lands off screen.
+  const KEEP_AHEAD = 60;
+
+  // On a chapter change, drop the buffered old-chapter text past the visible edge
+  // and regenerate it in the new chapter. Without this the hands keep typing the
+  // old texture for 200-330 characters (measured 18-28s, and at 10s a level a
+  // chapter could be skipped outright). The cut lands on a space, so the kept text
+  // ends on a whole word and nothing at or behind the caret changes.
+  function rechapter(run) {
+    const cut = run.text.indexOf(' ', run.cursor + KEEP_AHEAD);
+    if (cut === -1) return;
+    run.text = run.text.slice(0, cut);
+    run.gen.rewind(run.text.split(' '));
+    run.textCut = cut;           // the renderer redraws every slot past this
+    run.textEdits++;
+    topUp(run);
+  }
+
   // opts.goal: the wpm the player is pacing against. Defaults to the bottom of the
   // ladder, which is also what every caller that does not care about the goal gets.
   function createRun(seed, opts) {
@@ -964,7 +1015,7 @@
     const stepUp = !opts || opts.stepUp !== false;
     const run = {
       draft: 'a', seed: seed, gen: g.createGenerator(seed),
-      text: '', cursor: 0, marks: [], rhythmAt: [],
+      text: '', cursor: 0, marks: [], rhythmAt: [], struck: [], textCut: 0, textEdits: 0,
       combo: 0, maxCombo: 0, score: 0, strikes: 0, correct: 0, total: 0,
       v: 0, peakV: 0, ratio: 1, rhythm: 50, chapterIndex: 0,
       startedAt: null, lastKeyAt: null, nowMs: 0, intervals: [], blindSince: null,
@@ -1014,6 +1065,7 @@
       if (wasBlind) {
         strike = true;
         run.strikes++;
+        run.struck[run.cursor - 1] = true;   // presentation only: the renderer blots it
         if (run.strikes >= MAX_STRIKES) endRun(run, 'strikes');
       }
     }
@@ -1051,7 +1103,7 @@
     // are doing. Keying them off the ramping demand instead would walk a player
     // through three textures in the first ten seconds of every run.
     const next = g.chapterAt(run.demand.goal);
-    if (next > run.chapterIndex) run.chapterIndex = next;
+    if (next > run.chapterIndex) { run.chapterIndex = next; rechapter(run); }
 
     if (s.isBlind(run.ratio)) {
       if (run.blindSince === null) run.blindSince = nowMs;
@@ -1152,6 +1204,7 @@
     const ctx = canvas.getContext('2d');
     const marks = [];           // { t, dev } - dev in 0..1, computed once at mark()
     const intervals = [];       // trailing WINDOW intervals, for the local median
+    const steps = [];           // times of goal step-ups, drawn as full-height ticks
     let w = 0, h = 0, ink = '#17171a', rule = '#e6e2d7';
 
     function readColours() {
@@ -1189,6 +1242,8 @@
       marks.push({ t: nowMs, dev: dev });
       if (marks.length > CAPACITY) marks.shift();
     }
+
+    function step(nowMs) { steps.push(nowMs); }
 
     // Reading canvas.clientWidth every frame to spot a size change forces a
     // synchronous layout, and it lands immediately after the renderer has dirtied
@@ -1230,14 +1285,24 @@
         const len = STUB + (SPIKE - STUB) * marks[i].dev;
         ctx.fillRect(Math.round(x) - 1, top, 2, Math.min(len, h - top));
       }
+
+      // a cleared goal: one 1px tick through the rule and the marks, scrolling
+      // and ageing with them, so the clear sits in the run's own timeline
+      while (steps.length && w - (nowMs - steps[0]) * PX_PER_MS < -2) steps.shift();
+      for (let i = 0; i < steps.length; i++) {
+        const x = w - (nowMs - steps[i]) * PX_PER_MS;
+        if (x > w) continue;
+        ctx.globalAlpha = 0.15 + 0.85 * Math.pow(Math.max(0, x) / w, 0.8);
+        ctx.fillRect(Math.round(x), 0, 1, h);
+      }
       ctx.globalAlpha = 1;
     }
 
-    function reset() { marks.length = 0; intervals.length = 0; }
+    function reset() { marks.length = 0; intervals.length = 0; steps.length = 0; }
 
     resize();
     return {
-      resize: resize, mark: mark, draw: draw, reset: reset,
+      resize: resize, mark: mark, step: step, draw: draw, reset: reset,
       readColours: readColours,
       // test seam: the drawn shape is entirely a function of these
       _marks: marks
@@ -1259,6 +1324,13 @@
   const WINDOW = WINDOW_BEHIND + WINDOW_AHEAD;   // the span pool, 180 wide
   const SCROLL_K = 14;      // spring constants: scroll tracks tightly,
   const CARET_K = 9;        // the caret lags a little, deliberately
+  const REPAIR_PER_FRAME = 4;  // stale slots recycled per frame after a text cut
+
+  // prefers-reduced-motion, read once. The CSS media query only stops CSS
+  // transitions; the motion here is JS, so it has to be switched off here too:
+  // springs snap to their target and the typing pulse lends nothing.
+  const REDUCED = typeof window !== 'undefined' && typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // ---------------------------------------------------------------------------
   // Why the spans are a ring buffer at absolute positions.
@@ -1300,7 +1372,7 @@
   // readable one - the race it creates is real, not cosmetic relief from it.
   const PULSE_GAIN = 0.5;    // added to the pulse per character typed
   const PULSE_TAU = 0.26;    // seconds to decay by 1/e
-  const PULSE_MAX = 0.12;    // most opacity a keystroke can lend
+  const PULSE_MAX = REDUCED ? 0 : 0.12;    // most opacity a keystroke can lend
   const PULSE_REACH = 12;    // characters ahead that it reaches
 
   const TWIN_BEHIND = 4;     // characters of twin kept left of the caret
@@ -1314,7 +1386,9 @@
       pulse: 0,
       lastCursor: -1,
       twinFirst: -1,
-      twinText: null
+      twinText: null,
+      textEdits: 0,            // run.textEdits last seen: text past run.textCut was replaced
+      staleAt: -1              // next slot index that may still hold a discarded glyph
     };
 
     function measure() {
@@ -1371,6 +1445,23 @@
       const first = Math.max(0, cursor - WINDOW_BEHIND);
       const last = Math.min(run.text.length, first + WINDOW);
 
+      // The run cut its text back and regenerated past `textCut` (a chapter change).
+      // The slots already holding those characters would otherwise keep the old
+      // glyphs, so recycle them - a few a frame, nearest the caret first, because
+      // recycling all ~50 at once is the 47-write burst the perf test forbids. The
+      // cut sits >= 17 characters past the visible edge, about a second even at
+      // 200 wpm, and this clears ~50 slots in ~13 frames.
+      if (run.textEdits && run.textEdits !== st.textEdits) {
+        st.textEdits = run.textEdits;
+        st.staleAt = run.textCut + 1;
+      }
+      for (let n = 0; st.staleAt >= 0 && n < REPAIR_PER_FRAME;) {
+        if (st.staleAt >= first + WINDOW) { st.staleAt = -1; break; }
+        const sp = st.spans[st.staleAt % WINDOW];
+        if (sp.__idx === st.staleAt) { sp.__idx = -1; n++; }
+        st.staleAt++;
+      }
+
       for (let idx = first; idx < first + WINDOW; idx++) {
         const span = st.spans[idx % WINDOW];
 
@@ -1399,7 +1490,8 @@
 
         if (idx < cursor) {
           const mark = run.marks[idx];
-          cls = mark === 'err' ? 'err' : mark === 'miss' ? 'miss' : 'done';
+          cls = mark === 'err' ? (run.struck[idx] ? 'strike' : 'err')
+            : mark === 'miss' ? 'miss' : 'done';
         } else {
           const d = idx - cursor;
           op = draft.inkAhead(run, d);
@@ -1416,8 +1508,10 @@
 
       // --- springs: continuous float positions ---------------------------------
       const target = -cursor * cw;
-      st.x += (target - st.x) * (1 - Math.exp(-SCROLL_K * dt));
-      st.caretX += (target - st.caretX) * (1 - Math.exp(-CARET_K * dt));
+      if (REDUCED) { st.x = target; st.caretX = target; } else {
+        st.x += (target - st.x) * (1 - Math.exp(-SCROLL_K * dt));
+        st.caretX += (target - st.caretX) * (1 - Math.exp(-CARET_K * dt));
+      }
 
       els.line.style.transform = 'translate(' + st.x.toFixed(2) + 'px, -50%)';
       els.caret.style.transform = 'translateX(' + (st.caretX - target).toFixed(2) + 'px)';
@@ -1443,7 +1537,7 @@
     function reset() {
       st.x = 0; st.caretX = 0;
       st.pulse = 0; st.lastCursor = -1;
-      st.twinFirst = -1; st.twinText = null;
+      st.twinFirst = -1; st.twinText = null; st.textEdits = 0; st.staleAt = -1;
       for (const sp of st.spans) {
         sp.__idx = -1; sp.__cls = null; sp.__op = null;
         sp.textContent = ''; sp.className = ''; sp.style.opacity = '';
@@ -1451,8 +1545,19 @@
       els.caretLine.textContent = '';
     }
 
+    // adds a class to one character's span, if it is in the window. draw() would
+    // overwrite it, so this is for a frozen line only (the death beat); reset()
+    // clears it.
+    function mark(idx, cls) {
+      const sp = st.spans[idx % WINDOW];
+      if (!sp || sp.__idx !== idx) return false;
+      sp.className = sp.className ? sp.className + ' ' + cls : cls;
+      sp.__cls = null;
+      return true;
+    }
+
     return {
-      measure: measure, draw: draw, reset: reset,
+      measure: measure, draw: draw, reset: reset, mark: mark,
       get charWidth() { return st.charWidth; }
     };
   }
@@ -1804,9 +1909,11 @@
       { goal: app.goals.goal });
     app.renderer.reset();
     app.rail.reset();
+    resetHud(app.run);
     app.last = performance.now();
     els['strike-label'].textContent = 'strikes';
-    
+    els['caret'].className = '';
+
     show('run');
     app.rail.resize();            // the canvas is only measurable once visible
     app.renderer.measure();
@@ -1823,7 +1930,34 @@
     // elsewhere; a direct call is synchronous with the render instead of a
     // microtask behind it, so the sheet is never briefly shown fully expanded.
     if (root.cadenceScreens.enhanceResult) root.cadenceScreens.enhanceResult(els['result-sheet']);
-    show('result');
+
+    // The death beat. Frame 0: draw the killing keystroke once with dt 0, so no
+    // spring or pulse moves, then stop drawing - frame() skips the run while the
+    // screen is 'dying', so the ink stays exactly as it was when you lost. Mark
+    // what killed you, hold, then hand over to the result. Tab skips it.
+    const now = performance.now();
+    app.renderer.draw(run, D, 0);
+    app.rail.draw(now, run.rhythm);
+    updateHud(run, now);
+    if (run.endReason === 'strikes') app.renderer.mark(run.cursor - 1, 'death');
+    else els['caret'].className = 'death';
+    app.screen = 'dying';
+    app.diedAt = now;
+  }
+
+  const REDUCED_MOTION = !!(root.matchMedia &&
+    root.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const DEATH_HOLD_MS = 400;                        // nothing moves; read the line
+  const DEATH_FADE_MS = REDUCED_MOTION ? 0 : 200;   // run fades out (ease-in, css)
+
+  function deathBeat(now) {
+    const t = now - app.diedAt;
+    if (t >= DEATH_HOLD_MS + DEATH_FADE_MS) {
+      show('result');
+      els['screen-result'].className += ' is-entering';   // 300ms --ease, css
+    } else if (t >= DEATH_HOLD_MS && els['screen-run'].className.indexOf('is-leaving') < 0) {
+      els['screen-run'].className += ' is-leaving';
+    }
   }
 
   // Reading the stage's geometry every frame forces a synchronous layout, and it
@@ -1837,33 +1971,91 @@
   }
 
 
-  function updateHud(run) {
+  // The step-up, the run's only progression moment. Read off reached.length rather
+  // than a flag in the draft, so the simulation stays free of presentation state.
+  // Timings: the hold line stays full STEP_HOLD_MS then fades over STEP_FADE_MS,
+  // the goal counts up over STEP_COUNT_MS, the chapter crossfades over
+  // STEP_CHAPTER_MS. Under reduced motion all of it is skipped and the HUD just
+  // changes; the rail tick stays, since it scrolls with the marks like any other.
+  const STEP_HOLD_MS = 150, STEP_FADE_MS = 300, STEP_COUNT_MS = 300, STEP_CHAPTER_MS = 250;
+  const hud = { cleared: 0, stepAt: -Infinity, fromGoal: 0, chapter: 0, chFade: false,
+    hold: '', holdInk: '' };
+
+  function resetHud(run) {
+    hud.cleared = run.demand.reached.length;
+    hud.stepAt = -Infinity;
+    hud.chapter = run.chapterIndex;
+    hud.chFade = false;
+  }
+
+  function updateHud(run, now) {
     els['hud-score'].textContent = Math.round(run.score).toLocaleString('en-US');
     els['hud-wpm'].textContent = Math.round(run.v);
     els['hud-demand'].textContent = Math.round(run.demand.value);
     els['hud-rhythm'].textContent = Math.round(run.rhythm);
 
+    let t = Infinity;                      // ms since the last step-up
     if (run.draft === 'a') {
-      // the goal, and how much of the ten-second hold is banked. the label carries
-      // the progress rather than a second meter: a bar for a number this small is
-      // more furniture than information.
-      const held = run.demand.atGoalMs / 1000;
-      const cleared = run.demand.reached.length;
-      els['hud-goal'].textContent = Math.round(run.demand.goal);
-      const label = held >= 0.4
-        ? 'holding ' + held.toFixed(0) + '/' + c.HOLD_SECONDS
-        : (cleared ? cleared + ' cleared' : 'goal');
+      const reached = run.demand.reached;
+      const cleared = reached.length;
+      if (cleared > hud.cleared) {
+        app.rail.step(now);
+        if (!REDUCED_MOTION) {
+          hud.stepAt = now;
+          hud.fromGoal = reached[cleared - 1].goal;
+          hud.chFade = run.chapterIndex !== hud.chapter;
+        }
+      }
+      hud.cleared = cleared;
+      t = now - hud.stepAt;
+
+      // the goal, and the ten-second hold as a hairline that fills under it. The
+      // hold clock already pauses on dips inside HOLD_RELEASE and resets below it,
+      // so the line does exactly what the clock does.
+      let goal = run.demand.goal;
+      if (t < STEP_COUNT_MS) {
+        const e = 1 - Math.pow(1 - t / STEP_COUNT_MS, 3);
+        goal = hud.fromGoal + (goal - hud.fromGoal) * e;
+      }
+      const goalText = String(Math.round(goal));
+      if (els['hud-goal'].textContent !== goalText) els['hud-goal'].textContent = goalText;
+      const label = cleared ? cleared + ' cleared' : 'goal';
       if (els['hud-goal-label'].textContent !== label) els['hud-goal-label'].textContent = label;
+
+      let fill, ink = 1;
+      if (t < STEP_HOLD_MS + STEP_FADE_MS) {
+        fill = 1;
+        ink = t < STEP_HOLD_MS ? 1 : 1 - (t - STEP_HOLD_MS) / STEP_FADE_MS;
+      } else {
+        fill = Math.min(1, run.demand.atGoalMs / 1000 / c.HOLD_SECONDS);
+      }
+      // drawn as #hud-goal::after so it is exactly as wide as the number
+      const hold = fill.toFixed(3);
+      if (hud.hold !== hold) { hud.hold = hold; els['hud-goal'].style.setProperty('--hold', hold); }
+      const holdInk = ink.toFixed(2);
+      if (hud.holdInk !== holdInk) { hud.holdInk = holdInk; els['hud-goal'].style.setProperty('--hold-ink', holdInk); }
     }
 
-    const ch = c.CHAPTERS[run.chapterIndex];
+    // a chapter change at a step-up swaps the text at the midpoint of a dip
+    let chIndex = run.chapterIndex, chInk = 1;
+    if (hud.chFade && t < STEP_CHAPTER_MS) {
+      if (t < STEP_CHAPTER_MS / 2) chIndex = hud.chapter;
+      chInk = Math.abs(t - STEP_CHAPTER_MS / 2) / (STEP_CHAPTER_MS / 2);
+    }
+    hud.chapter = chIndex;
+    const ch = c.CHAPTERS[chIndex];
     els['hud-chapter'].textContent = ch.name;
-    els['hud-chapter-label'].textContent = 'chapter ' + CHAPTER_WORDS[run.chapterIndex];
+    els['hud-chapter-label'].textContent = 'chapter ' + CHAPTER_WORDS[chIndex];
+    const chOp = chInk === 1 ? '' : chInk.toFixed(2);
+    if (els['hud-chapter'].style.opacity !== chOp) {
+      els['hud-chapter'].style.opacity = chOp;
+      els['hud-chapter-label'].style.opacity = chOp;
+    }
 
     const spent = D.strikesOf(run);
     const marks = els['strikes'].children;
     for (let i = 0; i < marks.length; i++) {
-      const cls = i < spent ? 'spent' : '';
+      const cls = i < spent ? 'spent land' : '';
       if (marks[i].className !== cls) marks[i].className = cls;
     }
 
@@ -1876,12 +2068,13 @@
     requestAnimationFrame(frame);
     const dt = Math.min(0.05, (now - app.last) / 1000);
     app.last = now;
+    if (app.screen === 'dying') { deathBeat(now); return; }
     if (app.screen !== 'run' || !app.run) return;
 
     D.tick(app.run, now, dt);
     const info = app.renderer.draw(app.run, D, dt);
     app.rail.draw(now, app.run.rhythm);
-    updateHud(app.run);
+    updateHud(app.run, now);
 
     if (app.run.ended) finishRun();
   }
@@ -1912,7 +2105,7 @@
       '</div>' +
       '<div id="page-print">' + S.renderPage(run, 260) + '</div>' +
       '<div class="hint"><span><b>tab</b> again</span><span><b>c</b> copy</span>' +
-      '<span><b>esc</b> drafts</span></div>';
+      '<span><b>esc</b> title</span></div>';
 
     function stat(k, v, unit) {
       return '<div><i class="label">' + k + '</i><div class="v">' + v +
@@ -1951,9 +2144,14 @@
     }
 
     if (e.key === ' ') e.preventDefault();
+    if (app.screen === 'result' && e.key === 'Enter') { startRun(); return; }
     if (!isTypingKey(e)) return;
 
-    if (app.screen !== 'run') { startRun(); app.last = now; }
+    // The key that starts a run only starts it: the text was not on screen yet.
+    // The death beat and the result screen ignore typing altogether, or a player
+    // still mid-word when the run ends skips straight past them into a new run.
+    if (app.screen === 'title') { startRun(); app.last = now; return; }
+    if (app.screen !== 'run') return;
 
     const res = D.onKey(app.run, e.key, now);
     app.rail.mark(now);
@@ -1990,6 +2188,7 @@
     app.run = D.createRun(o.seed, { goal: o.goal });
     app.renderer.reset();
     app.rail.reset();
+    resetHud(app.run);
 
     els['strike-label'].textContent = 'strikes';
     show('run');                  // before any drawing: a hidden canvas measures 0
@@ -2020,7 +2219,9 @@
     const run = app.run;
     const info = app.renderer.draw(run, D, 1 / 60);
     app.rail.draw(now, run.rhythm);
-    updateHud(run);
+    hud.cleared = run.demand.reached.length;      // a single frame: no step-up event
+    hud.chapter = run.chapterIndex;
+    updateHud(run, now);
     app.screen = 'replay';
 
     return {

@@ -160,9 +160,14 @@
       return out;
     }
 
+    // The text was cut back to `kept`: the repeat and boundary rules must judge the
+    // next word against what is actually on the page, not the discarded words.
+    function rewind(kept) {
+      recent.length = 0;
+      for (const w of kept.slice(-NO_REPEAT_WINDOW)) if (w) recent.push(tagWord(w));
+    }
 
-
-    return { recent: recent, words: words };
+    return { recent: recent, words: words, rewind: rewind };
   }
 
   const api = {
