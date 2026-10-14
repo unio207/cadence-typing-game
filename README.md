@@ -126,6 +126,10 @@ the game itself (`draft-a`), and the DOM layer (`render`, `rail`, `screens`,
 `shell`). Everything in the core is a pure function, which is why it
 can be tested under `node --test` without a browser.
 
+The reasoning behind the October 2026 feel pass (what changed, what it was based
+on, what was measured, what was tried and dropped) is in
+`docs/design-rationale.md`; the research behind it is in `reports/`.
+
 `tools/profile.js` drives a run headlessly and counts **DOM mutations per frame**
 rather than CPU, because browser layout cost tracks mutations and the renderer's
 own compute turned out to be flat. It is what found the two scrolling bugs

@@ -131,7 +131,7 @@
   // Reaching a goal does not end the run: the ladder steps up and the ramp starts
   // again from just under where the demand had got to, so one run can clear
   // several levels and the mode stays endless. The dip is the breather: the ratio
-  // rises the same frame (draft-a applies rising ratios instantly), the page
+  // rises on the next frame (draft-a applies rising ratios instantly), the page
   // visibly refills, and the smoothstep climbs back over RAMP_SECONDS.
   function stepUp(pacer) {
     pacer.from = BREATHER * pacer.value;
